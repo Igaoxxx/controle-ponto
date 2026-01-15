@@ -217,6 +217,7 @@ const TimesheetControl = () => {
 
   const getProgressPercentage = () => {
     if (hoursGoal.total <= 0) return 0;
+    // Usa as horas extras positivas como compensadas automaticamente
     const compensated = Math.max(0, summary.autoCompensated || 0);
     return Math.min(100, (compensated / hoursGoal.total) * 100);
   };
@@ -399,6 +400,42 @@ const TimesheetControl = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* SEÇÃO DE META DE HORAS A COMPENSAR - RESTAURADA */}
+          <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
+            <div className="flex items-center gap-3 mb-6">
+              <Target className={darkMode ? "text-blue-400" : "text-indigo-600"} size={24} />
+              <h2 className="text-lg font-bold">Meta de Horas a Compensar</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Total de horas a compensar</label>
+                <input type="number" step="0.5" min="0" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} value={hoursGoal.total || ''} onChange={e => setHoursGoal({...hoursGoal, total: Math.max(0, parseFloat(e.target.value) || 0)})} />
+              </div>
+              <div>
+                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data limite</label>
+                <input type="date" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} value={hoursGoal.deadline} onChange={e => setHoursGoal({...hoursGoal, deadline: e.target.value})} />
+              </div>
+            </div>
+            <div className="mt-6 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm">Progresso: {formatHoursMinutes(summary.autoCompensated || 0)} / {formatHoursMinutes(hoursGoal.total)}</span>
+                <span className="text-sm font-bold">{getProgressPercentage().toFixed(1)}%</span>
+              </div>
+              <div className={`h-3 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-slate-200'}`}>
+                <div className={`h-full ${getProgressColor()}`} style={{ width: `${getProgressPercentage()}%` }}></div>
+              </div>
+              {getProgressPercentage() >= 100 && (
+                <div className={`flex items-center gap-2 mt-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                  <CheckCircle size={16} />
+                  <span className="text-sm font-medium">Meta concluída! 🎉</span>
+                </div>
+              )}
+              <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                💡 Suas horas extras positivas são contabilizadas automaticamente
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
