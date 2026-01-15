@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, AlertCircle, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft } from 'lucide-react';
+import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, AlertCircle, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils } from 'lucide-react';
 
 const TimesheetControl = () => {
   const [entries, setEntries] = useState([]);
   const [currentEntry, setCurrentEntry] = useState({
     date: new Date().toISOString().split('T')[0],
     entry: '',
+    lunchOut: '',
+    lunchIn: '',
     exit: '',
     isHalfDay: false,
     isAbsence: false
@@ -57,15 +59,31 @@ const TimesheetControl = () => {
     return days[new Date(d + 'T12:00:00').getDay()];
   };
 
-  const calculateHours = (entry, exit) => {
+  const calculateHours = (entry, lunchOut, lunchIn, exit) => {
     if (!entry || !exit) return 0;
+    
     const toMin = (t) => {
       const [h, m] = t.split(':').map(Number);
       return h * 60 + m;
     };
-    let totalMin = toMin(exit) - toMin(entry);
-    if (totalMin < 0) totalMin += 1440;
-    return (totalMin - 60) / 60;
+    
+    // Calcula o tempo total de trabalho
+    let totalMinutes = 0;
+    
+    // Se tem horários de almoço preenchidos
+    if (lunchOut && lunchIn) {
+      // Manhã: entrada até saída para almoço
+      totalMinutes += toMin(lunchOut) - toMin(entry);
+      // Tarde: retorno do almoço até saída
+      totalMinutes += toMin(exit) - toMin(lunchIn);
+    } else {
+      // Se não tem horários de almoço, considera 1 hora automaticamente
+      let rawMinutes = toMin(exit) - toMin(entry);
+      if (rawMinutes < 0) rawMinutes += 1440;
+      totalMinutes = rawMinutes - 60; // Desconta 1 hora de almoço
+    }
+    
+    return totalMinutes / 60;
   };
 
   const handleSuggestedExit = (entry, date) => {
@@ -73,6 +91,8 @@ const TimesheetControl = () => {
     const [h, m] = entry.split(':').map(Number);
     const day = new Date(date + 'T12:00:00').getDay();
     const needed = (day === 5) ? 8 : 9;
+    
+    // Considera 1 hora de almoço + horas necessárias
     const exitMin = (h * 60 + m) + (needed * 60) + 60;
     const outH = Math.floor(exitMin / 60) % 24;
     const outM = exitMin % 60;
@@ -81,13 +101,22 @@ const TimesheetControl = () => {
 
   const addEntry = () => {
     if (!currentEntry.date) { alert('Selecione uma data'); return; }
+    
     const day = new Date(currentEntry.date + 'T12:00:00').getDay();
     const expected = (day === 0 || day === 6) ? 0 : (day === 5 ? 8 : 9);
+    
     let worked = 0;
     if (!currentEntry.isAbsence && currentEntry.entry && currentEntry.exit) {
-      worked = calculateHours(currentEntry.entry, currentEntry.exit);
+      worked = calculateHours(
+        currentEntry.entry, 
+        currentEntry.lunchOut, 
+        currentEntry.lunchIn, 
+        currentEntry.exit
+      );
+      
       if (currentEntry.isHalfDay) worked = worked / 2;
     }
+    
     const newEntry = {
       ...currentEntry,
       dayOfWeek: getDayOfWeek(currentEntry.date),
@@ -95,6 +124,7 @@ const TimesheetControl = () => {
       expectedHours: expected,
       overtime: worked - expected
     };
+    
     let updated = [...entries];
     if (editingIndex !== null) {
       updated[editingIndex] = newEntry;
@@ -102,14 +132,28 @@ const TimesheetControl = () => {
     } else {
       updated.push(newEntry);
     }
-    updated.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    updated.sort((a, b) => new Date(b.date) - new Date(a.date));
     setEntries(updated);
-    setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', exit: '', isHalfDay: false, isAbsence: false });
+    
+    setCurrentEntry({ 
+      date: new Date().toISOString().split('T')[0], 
+      entry: '', 
+      lunchOut: '',
+      lunchIn: '',
+      exit: '', 
+      isHalfDay: false, 
+      isAbsence: false 
+    });
     setSuggestedExit('');
   };
 
   const deleteEntry = (i) => {
-    if (window.confirm('Deseja excluir?')) setEntries(entries.filter((_, idx) => idx !== i));
+    if (window.confirm('Deseja excluir?')) {
+      const updated = [...entries];
+      updated.splice(i, 1);
+      setEntries(updated);
+    }
   };
 
   const getCurrentWeekDates = () => {
@@ -130,6 +174,16 @@ const TimesheetControl = () => {
     prevMonday.setDate(prevSunday.getDate() - 6);
     return { monday: prevMonday, sunday: prevSunday };
   };
+
+  // Últimos 10 registros para exibição na tela inicial
+  const lastTenEntries = useMemo(() => {
+    return entries.slice(0, 10);
+  }, [entries]);
+
+  // Todos os registros ordenados por data (do mais recente para o mais antigo)
+  const sortedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [entries]);
 
   const summary = useMemo(() => {
     const totals = entries.reduce((acc, e) => ({
@@ -163,7 +217,6 @@ const TimesheetControl = () => {
 
   const getProgressPercentage = () => {
     if (hoursGoal.total <= 0) return 0;
-    // Usa as horas extras positivas como compensadas automaticamente
     const compensated = Math.max(0, summary.autoCompensated || 0);
     return Math.min(100, (compensated / hoursGoal.total) * 100);
   };
@@ -177,7 +230,7 @@ const TimesheetControl = () => {
 
   const exportMonthToCSV = () => {
     const [year, month] = reportMonth.split('-');
-    const filtered = entries.filter(e => {
+    const filtered = sortedEntries.filter(e => {
       const entryDate = new Date(e.date + 'T12:00:00');
       return entryDate.getFullYear() === parseInt(year) && 
              (entryDate.getMonth() + 1) === parseInt(month);
@@ -188,11 +241,13 @@ const TimesheetControl = () => {
       return;
     }
 
-    const headers = ['Data', 'Dia da Semana', 'Entrada', 'Saída', 'Horas Trabalhadas', 'Horas Esperadas', 'Saldo', 'Tipo'];
+    const headers = ['Data', 'Dia da Semana', 'Entrada', 'Saída Almoço', 'Retorno Almoço', 'Saída', 'Horas Trabalhadas', 'Horas Esperadas', 'Saldo', 'Tipo'];
     const rows = filtered.map(e => [
       new Date(e.date + 'T12:00:00').toLocaleDateString('pt-BR'),
       e.dayOfWeek,
       e.entry || '-',
+      e.lunchOut || '-',
+      e.lunchIn || '-',
       e.exit || '-',
       formatHoursMinutes(e.workedHours),
       formatHoursMinutes(e.expectedHours),
@@ -206,8 +261,8 @@ const TimesheetControl = () => {
       overtime: acc.overtime + e.overtime
     }), { worked: 0, expected: 0, overtime: 0 });
 
-    rows.push(['', '', '', '', '', '', '', '']);
-    rows.push(['TOTAIS', '', '', '', formatHoursMinutes(totals.worked), formatHoursMinutes(totals.expected), (totals.overtime > 0 ? '+' : '') + formatHoursMinutes(totals.overtime), '']);
+    rows.push(['', '', '', '', '', '', '', '', '', '']);
+    rows.push(['TOTAIS', '', '', '', '', '', formatHoursMinutes(totals.worked), formatHoursMinutes(totals.expected), (totals.overtime > 0 ? '+' : '') + formatHoursMinutes(totals.overtime), '']);
 
     const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -225,13 +280,13 @@ const TimesheetControl = () => {
             <Clock className={darkMode ? "text-blue-400" : "text-blue-600"} size={24} />
           </div>
           <div>
-            <h2 className="text-xl font-bold">Registros</h2>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>Preencha os campos abaixo</p>
+            <h2 className="text-xl font-bold">Registro de Ponto</h2>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>Preencha os horários do dia</p>
           </div>
         </div>
 
         <div className="rounded-xl p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data</label>
               <input type="date" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`} value={currentEntry.date} onChange={e => setCurrentEntry({...currentEntry, date: e.target.value})} />
@@ -241,6 +296,22 @@ const TimesheetControl = () => {
                 <div>
                   <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Entrada</label>
                   <input type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`} value={currentEntry.entry} onChange={e => { setCurrentEntry({...currentEntry, entry: e.target.value}); handleSuggestedExit(e.target.value, currentEntry.date); }} />
+                </div>
+                <div>
+                  <label className={`block text-xs font-bold uppercase mb-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
+                    <Utensils size={12} />
+                    Saída Almoço
+                  </label>
+                  <input type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`} value={currentEntry.lunchOut} onChange={e => setCurrentEntry({...currentEntry, lunchOut: e.target.value})} />
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Opcional</p>
+                </div>
+                <div>
+                  <label className={`block text-xs font-bold uppercase mb-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
+                    <Utensils size={12} />
+                    Retorno Almoço
+                  </label>
+                  <input type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`} value={currentEntry.lunchIn} onChange={e => setCurrentEntry({...currentEntry, lunchIn: e.target.value})} />
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Opcional</p>
                 </div>
                 <div>
                   <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Saída</label>
@@ -255,7 +326,7 @@ const TimesheetControl = () => {
                 {editingIndex !== null ? 'Atualizar' : 'Lançar'}
               </button>
               {editingIndex !== null && (
-                <button onClick={() => { setEditingIndex(null); setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', exit: '', isHalfDay: false, isAbsence: false }); }} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-slate-100'}`}>
+                <button onClick={() => { setEditingIndex(null); setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', lunchOut: '', lunchIn: '', exit: '', isHalfDay: false, isAbsence: false }); }} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-slate-100'}`}>
                   <X size={20}/>
                 </button>
               )}
@@ -271,109 +342,93 @@ const TimesheetControl = () => {
               Falta / Dispensa
             </label>
           </div>
+          <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
+            <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>
+              <span className="font-bold">Nota:</span> Os campos de almoço são opcionais. Se não preencher, será considerado 1 hora automaticamente.
+            </p>
+          </div>
         </div>
       </div>
 
       {entries.length > 0 && (
-        <div className={`rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
-          <table className="w-full">
-            <thead className={darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}>
-              <tr className="border-b">
-                <th className="px-6 py-4 text-xs font-bold uppercase text-left">Data</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase text-left">Período</th>
-                <th className="px6 py-4 text-xs font-bold uppercase text-center">Trabalhadas</th>
-                <th className="px6 py-4 text-xs font-bold uppercase text-center">Saldo</th>
-                <th className="px6 py-4 text-xs font-bold uppercase text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry, i) => (
-                <tr key={i} className={`${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-slate-50'} ${entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : ''}`}>
-                  <td className="px-6 py-4">
-                    <span className="block font-bold">{new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                    <span className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</span>
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    {entry.isAbsence ? <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>FALTA/DISPENSA</span> : <span>{entry.entry} → {entry.exit}</span>}
-                  </td>
-                  <td className="px-6 py-4 text-center font-bold">{entry.isAbsence ? '-' : formatHoursMinutes(entry.workedHours)}</td>
-                  <td className={`px-6 py-4 text-center font-black ${entry.overtime >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                    {entry.overtime > 0 ? '+' : ''}{formatHoursMinutes(entry.overtime)}
-                  </td>
-                  <td className="px-6 py-4 text-right space-x-2">
-                    <button onClick={() => { setEditingIndex(i); setCurrentEntry(entries[i]); }} className={`p-2 rounded-lg ${darkMode ? 'text-blue-400' : 'text-blue-400'}`}><Edit2 size={16}/></button>
-                    <button onClick={() => deleteEntry(i)} className={`p-2 rounded-lg ${darkMode ? 'text-red-400' : 'text-red-400'}`}><Trash2 size={16}/></button>
-                  </td>
+        <>
+          <div className={`rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
+            <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'} flex justify-between items-center`}>
+              <h3 className="text-lg font-bold">Últimos 10 Registros</h3>
+              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                Total de registros: {entries.length}
+              </span>
+            </div>
+            <table className="w-full">
+              <thead className={darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}>
+                <tr className="border-b">
+                  <th className="px-6 py-4 text-xs font-bold uppercase text-left">Data</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase text-left">Período</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase text-center">Horas Trabalhadas</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase text-center">Saldo</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase text-right">Ações</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {lastTenEntries.map((entry, i) => (
+                  <tr key={i} className={`${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-slate-50'} ${entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : ''}`}>
+                    <td className="px-6 py-4">
+                      <span className="block font-bold">{new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                      <span className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</span>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {entry.isAbsence ? (
+                        <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>FALTA/DISPENSA</span>
+                      ) : (
+                        <div>
+                          <div><span className="font-medium">Entrada:</span> {entry.entry}</div>
+                          <div><span className="font-medium">Almoço:</span> {entry.lunchOut || '-'} → {entry.lunchIn || '-'}</div>
+                          <div><span className="font-medium">Saída:</span> {entry.exit}</div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center font-bold">{entry.isAbsence ? '-' : formatHoursMinutes(entry.workedHours)}</td>
+                    <td className={`px-6 py-4 text-center font-black ${entry.overtime >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {entry.overtime > 0 ? '+' : ''}{formatHoursMinutes(entry.overtime)}
+                    </td>
+                    <td className="px-6 py-4 text-right space-x-2">
+                      <button onClick={() => { setEditingIndex(sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry)); setCurrentEntry(entry); }} className={`p-2 rounded-lg ${darkMode ? 'text-blue-400' : 'text-blue-400'}`}><Edit2 size={16}/></button>
+                      <button onClick={() => deleteEntry(sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry))} className={`p-2 rounded-lg ${darkMode ? 'text-red-400' : 'text-red-400'}`}><Trash2 size={16}/></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
-        <div className="flex items-center gap-3 mb-6">
-          <Target className={darkMode ? "text-blue-400" : "text-indigo-600"} size={24} />
-          <h2 className="text-lg font-bold">Meta de Horas a Compensar</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Total de horas a compensar</label>
-            <input type="number" step="0.5" min="0" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} value={hoursGoal.total || ''} onChange={e => setHoursGoal({...hoursGoal, total: Math.max(0, parseFloat(e.target.value) || 0)})} />
-          </div>
-          <div>
-            <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data limite</label>
-            <input type="date" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} value={hoursGoal.deadline} onChange={e => setHoursGoal({...hoursGoal, deadline: e.target.value})} />
-          </div>
-        </div>
-        <div className="mt-6 space-y-2">
-          <div className="flex justify-between">
-            <span className="text-sm">Progresso: {formatHoursMinutes(summary.autoCompensated || 0)} / {formatHoursMinutes(hoursGoal.total)}</span>
-            <span className="text-sm font-bold">{getProgressPercentage().toFixed(1)}%</span>
-          </div>
-          <div className={`h-3 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-slate-200'}`}>
-            <div className={`h-full ${getProgressColor()}`} style={{ width: `${getProgressPercentage()}%` }}></div>
-          </div>
-          {getProgressPercentage() >= 100 && (
-            <div className={`flex items-center gap-2 mt-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
-              <CheckCircle size={16} />
-              <span className="text-sm font-medium">Meta concluída! 🎉</span>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className={`md:col-span-2 p-8 rounded-2xl shadow-lg border ${darkMode ? 'bg-gradient-to-br from-blue-900 to-blue-800 border-blue-700' : 'bg-gradient-to-br from-blue-600 to-blue-500 border-blue-400'} text-white`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Clock size={20} className="opacity-80" />
+                <p className="text-sm font-bold uppercase opacity-80">Semana Atual</p>
+              </div>
+              <p className="text-5xl font-black mb-2">{formatHoursMinutes(summary.currentWeekHours || 0)}</p>
+              <p className="text-sm opacity-90">de 44h semanais</p>
+              <div className={`mt-4 h-2 rounded-full overflow-hidden ${darkMode ? 'bg-blue-950/50' : 'bg-blue-700/30'}`}>
+                <div 
+                  className="h-full bg-white/80 transition-all duration-500" 
+                  style={{ width: `${Math.min((summary.currentWeekHours / 44) * 100, 100)}%` }}
+                ></div>
+              </div>
             </div>
-          )}
-          <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-            💡 Suas horas extras positivas são contabilizadas automaticamente
-          </p>
-        </div>
-      </div>
-
-      {entries.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className={`md:col-span-2 p-8 rounded-2xl shadow-lg border ${darkMode ? 'bg-gradient-to-br from-blue-900 to-blue-800 border-blue-700' : 'bg-gradient-to-br from-blue-600 to-blue-500 border-blue-400'} text-white`}>
-            <div className="flex items-center gap-2 mb-2">
-              <Clock size={20} className="opacity-80" />
-              <p className="text-sm font-bold uppercase opacity-80">Semana Atual</p>
+            
+            <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
+              <p className={`text-xs font-bold uppercase mb-2 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Semana Anterior</p>
+              <p className="text-2xl font-black">{formatHoursMinutes(summary.previousWeekHours || 0)}</p>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>de 44h semanais</p>
             </div>
-            <p className="text-5xl font-black mb-2">{formatHoursMinutes(summary.currentWeekHours || 0)}</p>
-            <p className="text-sm opacity-90">de 44h semanais</p>
-            <div className={`mt-4 h-2 rounded-full overflow-hidden ${darkMode ? 'bg-blue-950/50' : 'bg-blue-700/30'}`}>
-              <div 
-                className="h-full bg-white/80 transition-all duration-500" 
-                style={{ width: `${Math.min((summary.currentWeekHours / 44) * 100, 100)}%` }}
-              ></div>
+            
+            <div className={`p-6 rounded-2xl shadow-lg border ${summary.overtime >= 0 ? (darkMode ? 'bg-emerald-900/20 border-emerald-800' : 'bg-emerald-50 border-emerald-100') : (darkMode ? 'bg-red-900/20 border-red-800' : 'bg-rose-50 border-rose-100')}`}>
+              <p className={`text-xs font-bold uppercase mb-2 ${summary.overtime >= 0 ? (darkMode ? 'text-emerald-400' : 'text-emerald-600') : (darkMode ? 'text-red-400' : 'text-red-600')}`}>Saldo Acumulado</p>
+              <p className={`text-2xl font-black ${summary.overtime >= 0 ? (darkMode ? 'text-emerald-300' : 'text-emerald-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>{summary.overtime > 0 ? '+' : ''}{formatHoursMinutes(summary.overtime)}</p>
             </div>
           </div>
-          
-          <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
-            <p className={`text-xs font-bold uppercase mb-2 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Semana Anterior</p>
-            <p className="text-2xl font-black">{formatHoursMinutes(summary.previousWeekHours || 0)}</p>
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>de 44h semanais</p>
-          </div>
-          
-          <div className={`p-6 rounded-2xl shadow-lg border ${summary.overtime >= 0 ? (darkMode ? 'bg-emerald-900/20 border-emerald-800' : 'bg-emerald-50 border-emerald-100') : (darkMode ? 'bg-red-900/20 border-red-800' : 'bg-rose-50 border-rose-100')}`}>
-            <p className={`text-xs font-bold uppercase mb-2 ${summary.overtime >= 0 ? (darkMode ? 'text-emerald-400' : 'text-emerald-600') : (darkMode ? 'text-red-400' : 'text-red-600')}`}>Saldo Acumulado</p>
-            <p className={`text-2xl font-black ${summary.overtime >= 0 ? (darkMode ? 'text-emerald-300' : 'text-emerald-700') : (darkMode ? 'text-red-300' : 'text-red-700')}`}>{summary.overtime > 0 ? '+' : ''}{formatHoursMinutes(summary.overtime)}</p>
-          </div>
-        </div>
+        </>
       )}
     </>
   );
@@ -386,7 +441,7 @@ const TimesheetControl = () => {
         </div>
         <div>
           <h2 className="text-xl font-bold">Relatórios e Exportação</h2>
-          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>Exporte seus dados para análise</p>
+          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>Exporte todos os registros para análise</p>
         </div>
       </div>
 
@@ -414,7 +469,7 @@ const TimesheetControl = () => {
             </div>
           </div>
           <p className={`text-xs mt-3 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-            O arquivo CSV conterá todos os registros do mês selecionado, incluindo totais.
+            O arquivo CSV conterá todos os registros do mês selecionado, incluindo horários de almoço e totais.
           </p>
         </div>
 
@@ -429,15 +484,55 @@ const TimesheetControl = () => {
               <p className={`text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Período Abrangido</p>
               <p className="text-lg font-bold">
                 {entries.length > 0 
-                  ? `${new Date(entries[0].date + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(entries[entries.length - 1].date + 'T12:00:00').toLocaleDateString('pt-BR')}`
+                  ? `${new Date(entries[entries.length - 1].date + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(entries[0].date + 'T12:00:00').toLocaleDateString('pt-BR')}`
                   : 'Nenhum registro'}
               </p>
             </div>
             <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
-              <p className={`text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horas Totais</p>
+              <p className={`text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horas Totais Trabalhadas</p>
               <p className="text-2xl font-bold">{formatHoursMinutes(summary.worked)}</p>
             </div>
           </div>
+        </div>
+
+        <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
+          <h3 className="text-lg font-bold mb-3">Registros Completos ({entries.length} registros)</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
+                  <th className="py-2 px-3 text-left">Data</th>
+                  <th className="py-2 px-3 text-left">Entrada</th>
+                  <th className="py-2 px-3 text-left">Almoço</th>
+                  <th className="py-2 px-3 text-left">Saída</th>
+                  <th className="py-2 px-3 text-right">Horas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedEntries.slice(0, 20).map((entry, i) => (
+                  <tr key={i} className={`border-b ${darkMode ? 'border-gray-800' : 'border-slate-100'}`}>
+                    <td className="py-2 px-3">
+                      {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                      <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</div>
+                    </td>
+                    <td className="py-2 px-3">{entry.entry || '-'}</td>
+                    <td className="py-2 px-3">
+                      {entry.lunchOut && entry.lunchIn ? `${entry.lunchOut} → ${entry.lunchIn}` : '1h automática'}
+                    </td>
+                    <td className="py-2 px-3">{entry.exit || '-'}</td>
+                    <td className={`py-2 px-3 text-right font-bold ${entry.overtime >= 0 ? (darkMode ? 'text-emerald-400' : 'text-emerald-600') : (darkMode ? 'text-red-400' : 'text-red-600')}`}>
+                      {formatHoursMinutes(entry.workedHours)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {entries.length > 20 && (
+            <p className={`text-xs mt-3 text-center ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+              Mostrando 20 de {entries.length} registros. Exporte o CSV para ver todos.
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -518,7 +613,7 @@ const TimesheetControl = () => {
               <div>
                 <h1 className="text-2xl font-black">Controle de Ponto</h1>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                  {currentPage === 'home' ? 'Registros diários' : 'Relatórios e exportação'} • {saveStatus}
+                  {currentPage === 'home' ? 'Últimos 10 registros' : 'Relatórios completos'} • {saveStatus}
                 </p>
               </div>
             </div>
