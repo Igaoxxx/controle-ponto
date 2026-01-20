@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, AlertCircle, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils } from 'lucide-react';
 
 const TimesheetControl = () => {
   const [entries, setEntries] = useState([]);
@@ -13,7 +13,6 @@ const TimesheetControl = () => {
     isAbsence: false
   });
   const [suggestedExit, setSuggestedExit] = useState('');
-  const [saveStatus, setSaveStatus] = useState('Sincronizado');
   const [editingIndex, setEditingIndex] = useState(null);
   const [hoursGoal, setHoursGoal] = useState({ total: 0, deadline: '', hoursPaid: 0 });
   const [darkMode, setDarkMode] = useState(true);
@@ -171,8 +170,8 @@ const TimesheetControl = () => {
     }
   };
 
-  // Função corrigida para calcular semana (segunda a sexta)
-  const getWeekDates = (date = new Date()) => {
+  // Função corrigida para calcular semana (segunda a sexta) - memoizada com useCallback
+  const getWeekDates = useCallback((date = new Date()) => {
     const currentDate = new Date(date);
     const dayOfWeek = currentDate.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
     
@@ -185,19 +184,19 @@ const TimesheetControl = () => {
     friday.setDate(monday.getDate() + 4);
     
     return { monday, friday };
-  };
+  }, []);
 
-  // Semana atual (segunda a sexta)
-  const getCurrentWeekDates = () => {
+  // Semana atual (segunda a sexta) - memoizada com useCallback
+  const getCurrentWeekDates = useCallback(() => {
     return getWeekDates(new Date());
-  };
+  }, [getWeekDates]);
 
-  // Semana anterior (segunda a sexta)
-  const getPreviousWeekDates = () => {
+  // Semana anterior (segunda a sexta) - memoizada com useCallback
+  const getPreviousWeekDates = useCallback(() => {
     const lastWeek = new Date();
     lastWeek.setDate(lastWeek.getDate() - 7);
     return getWeekDates(lastWeek);
-  };
+  }, [getWeekDates]);
 
   // Últimos 10 registros para exibição na tela inicial
   const lastTenEntries = useMemo(() => {
@@ -243,7 +242,7 @@ const TimesheetControl = () => {
       .reduce((sum, entry) => sum + entry.workedHours, 0);
 
     return { ...totals, autoCompensated, currentWeekHours, previousWeekHours };
-  }, [entries]);
+  }, [entries, getCurrentWeekDates, getPreviousWeekDates]);
 
   const getProgressPercentage = () => {
     if (hoursGoal.total <= 0) return 0;
@@ -602,7 +601,7 @@ const TimesheetControl = () => {
               </thead>
               <tbody>
                 {sortedEntries.map((entry, i) => (
-                  <tr key={i} className={`border-b ${darkMode ? 'border-gray-800' : 'border-slate-100'} hover:${darkMode ? 'bg-gray-700/30' : 'bg-slate-50'}`}>
+                  <tr key={i} className={`border-b ${darkMode ? 'border-gray-800' : 'border-slate-100'} ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-slate-50'}`}>
                     <td className="py-2 px-3">
                       {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                       <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</div>
@@ -731,7 +730,7 @@ const TimesheetControl = () => {
               <div>
                 <h1 className="text-2xl font-black">Controle de Ponto</h1>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                  {currentPage === 'home' ? 'Últimos 10 registros' : 'Relatórios completos'} • {saveStatus}
+                  {currentPage === 'home' ? 'Últimos 10 registros' : 'Relatórios completos'} • Sincronizado
                 </p>
               </div>
             </div>
