@@ -125,16 +125,31 @@ const TimesheetControl = () => {
       overtime: worked - expected
     };
     
-    let updated = [...entries];
-    if (editingIndex !== null) {
-      updated[editingIndex] = newEntry;
-      setEditingIndex(null);
-    } else {
-      updated.push(newEntry);
-    }
+    // Verifica se já existe registro para esta data
+    const existingIndex = entries.findIndex(entry => entry.date === currentEntry.date);
     
-    updated.sort((a, b) => new Date(b.date) - new Date(a.date));
-    setEntries(updated);
+    if (existingIndex !== -1 && editingIndex === null) {
+      // Pergunta se deseja substituir
+      if (window.confirm(`Já existe um registro para ${new Date(currentEntry.date + 'T12:00:00').toLocaleDateString('pt-BR')}. Deseja substituir?`)) {
+        const updated = [...entries];
+        updated[existingIndex] = newEntry;
+        updated.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setEntries(updated);
+      } else {
+        return; // Não faz nada se o usuário cancelar
+      }
+    } else {
+      let updated = [...entries];
+      if (editingIndex !== null) {
+        updated[editingIndex] = newEntry;
+        setEditingIndex(null);
+      } else {
+        updated.push(newEntry);
+      }
+      
+      updated.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setEntries(updated);
+    }
     
     setCurrentEntry({ 
       date: new Date().toISOString().split('T')[0], 
@@ -156,23 +171,32 @@ const TimesheetControl = () => {
     }
   };
 
-  const getCurrentWeekDates = () => {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    return { monday, sunday };
+  // Função corrigida para calcular semana (segunda a sexta)
+  const getWeekDates = (date = new Date()) => {
+    const currentDate = new Date(date);
+    const dayOfWeek = currentDate.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+    
+    // Calcula a segunda-feira da semana
+    const monday = new Date(currentDate);
+    monday.setDate(currentDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    
+    // Calcula a sexta-feira da semana (semana de segunda a sexta)
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+    
+    return { monday, friday };
   };
 
+  // Semana atual (segunda a sexta)
+  const getCurrentWeekDates = () => {
+    return getWeekDates(new Date());
+  };
+
+  // Semana anterior (segunda a sexta)
   const getPreviousWeekDates = () => {
-    const { monday } = getCurrentWeekDates();
-    const prevSunday = new Date(monday);
-    prevSunday.setDate(monday.getDate() - 1);
-    const prevMonday = new Date(prevSunday);
-    prevMonday.setDate(prevSunday.getDate() - 6);
-    return { monday: prevMonday, sunday: prevSunday };
+    const lastWeek = new Date();
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    return getWeekDates(lastWeek);
   };
 
   // Últimos 10 registros para exibição na tela inicial
@@ -194,21 +218,27 @@ const TimesheetControl = () => {
     // Calcula horas compensadas automaticamente (apenas as positivas)
     const autoCompensated = Math.max(0, totals.overtime);
 
-    // Calcula horas da semana atual
-    const { monday: currentMonday, sunday: currentSunday } = getCurrentWeekDates();
+    // Calcula horas da semana atual (segunda a sexta)
+    const { monday: currentMonday, friday: currentFriday } = getCurrentWeekDates();
     const currentWeekHours = entries
       .filter(entry => {
         const entryDate = new Date(entry.date + 'T12:00:00');
-        return entryDate >= currentMonday && entryDate <= currentSunday;
+        // Considera apenas de segunda a sexta
+        const dayOfWeek = entryDate.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) return false; // Ignora fim de semana
+        return entryDate >= currentMonday && entryDate <= currentFriday;
       })
       .reduce((sum, entry) => sum + entry.workedHours, 0);
 
-    // Calcula horas da semana anterior
-    const { monday: prevMonday, sunday: prevSunday } = getPreviousWeekDates();
+    // Calcula horas da semana anterior (segunda a sexta)
+    const { monday: prevMonday, friday: prevFriday } = getPreviousWeekDates();
     const previousWeekHours = entries
       .filter(entry => {
         const entryDate = new Date(entry.date + 'T12:00:00');
-        return entryDate >= prevMonday && entryDate <= prevSunday;
+        // Considera apenas de segunda a sexta
+        const dayOfWeek = entryDate.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) return false; // Ignora fim de semana
+        return entryDate >= prevMonday && entryDate <= prevFriday;
       })
       .reduce((sum, entry) => sum + entry.workedHours, 0);
 
@@ -345,7 +375,7 @@ const TimesheetControl = () => {
           </div>
           <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
             <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>
-              <span className="font-bold">Nota:</span> Os campos de almoço são opcionais. Se não preencher, será considerado 1 hora automaticamente.
+              <span className="font-bold">Nota:</span> Os campos de almoço são opcionais. Se não preencher, será considerado 1 hora automaticamente. Apenas um registro por dia é permitido.
             </p>
           </div>
         </div>
@@ -393,8 +423,19 @@ const TimesheetControl = () => {
                       {entry.overtime > 0 ? '+' : ''}{formatHoursMinutes(entry.overtime)}
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
-                      <button onClick={() => { setEditingIndex(sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry)); setCurrentEntry(entry); }} className={`p-2 rounded-lg ${darkMode ? 'text-blue-400' : 'text-blue-400'}`}><Edit2 size={16}/></button>
-                      <button onClick={() => deleteEntry(sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry))} className={`p-2 rounded-lg ${darkMode ? 'text-red-400' : 'text-red-400'}`}><Trash2 size={16}/></button>
+                      <button onClick={() => { 
+                        const index = sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
+                        setEditingIndex(index); 
+                        setCurrentEntry(entry); 
+                      }} className={`p-2 rounded-lg ${darkMode ? 'text-blue-400' : 'text-blue-400'}`}>
+                        <Edit2 size={16}/>
+                      </button>
+                      <button onClick={() => {
+                        const index = sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
+                        deleteEntry(index);
+                      }} className={`p-2 rounded-lg ${darkMode ? 'text-red-400' : 'text-red-400'}`}>
+                        <Trash2 size={16}/>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -402,7 +443,7 @@ const TimesheetControl = () => {
             </table>
           </div>
 
-          {/* SEÇÃO DE META DE HORAS A COMPENSAR - RESTAURADA */}
+          {/* SEÇÃO DE META DE HORAS A COMPENSAR */}
           <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
             <div className="flex items-center gap-3 mb-6">
               <Target className={darkMode ? "text-blue-400" : "text-indigo-600"} size={24} />
@@ -443,9 +484,12 @@ const TimesheetControl = () => {
               <div className="flex items-center gap-2 mb-2">
                 <Clock size={20} className="opacity-80" />
                 <p className="text-sm font-bold uppercase opacity-80">Semana Atual</p>
+                <span className="text-xs opacity-70">
+                  ({new Date(getCurrentWeekDates().monday).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})} - {new Date(getCurrentWeekDates().friday).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})})
+                </span>
               </div>
               <p className="text-5xl font-black mb-2">{formatHoursMinutes(summary.currentWeekHours || 0)}</p>
-              <p className="text-sm opacity-90">de 44h semanais</p>
+              <p className="text-sm opacity-90">de 44h semanais (segunda a sexta)</p>
               <div className={`mt-4 h-2 rounded-full overflow-hidden ${darkMode ? 'bg-blue-950/50' : 'bg-blue-700/30'}`}>
                 <div 
                   className="h-full bg-white/80 transition-all duration-500" 
@@ -455,9 +499,14 @@ const TimesheetControl = () => {
             </div>
             
             <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
-              <p className={`text-xs font-bold uppercase mb-2 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Semana Anterior</p>
+              <div className="flex items-center gap-2 mb-2">
+                <p className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Semana Anterior</p>
+                <span className="text-xs opacity-70">
+                  ({new Date(getPreviousWeekDates().monday).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})} - {new Date(getPreviousWeekDates().friday).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})})
+                </span>
+              </div>
               <p className="text-2xl font-black">{formatHoursMinutes(summary.previousWeekHours || 0)}</p>
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>de 44h semanais</p>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>de 44h semanais (segunda a sexta)</p>
             </div>
             
             <div className={`p-6 rounded-2xl shadow-lg border ${summary.overtime >= 0 ? (darkMode ? 'bg-emerald-900/20 border-emerald-800' : 'bg-emerald-50 border-emerald-100') : (darkMode ? 'bg-red-900/20 border-red-800' : 'bg-rose-50 border-rose-100')}`}>
@@ -533,7 +582,12 @@ const TimesheetControl = () => {
         </div>
 
         <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
-          <h3 className="text-lg font-bold mb-3">Registros Completos ({entries.length} registros)</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-bold">Registros Completos ({entries.length} registros)</h3>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+              Ordenado do mais recente para o mais antigo
+            </p>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -543,11 +597,12 @@ const TimesheetControl = () => {
                   <th className="py-2 px-3 text-left">Almoço</th>
                   <th className="py-2 px-3 text-left">Saída</th>
                   <th className="py-2 px-3 text-right">Horas</th>
+                  <th className="py-2 px-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedEntries.slice(0, 20).map((entry, i) => (
-                  <tr key={i} className={`border-b ${darkMode ? 'border-gray-800' : 'border-slate-100'}`}>
+                {sortedEntries.map((entry, i) => (
+                  <tr key={i} className={`border-b ${darkMode ? 'border-gray-800' : 'border-slate-100'} hover:${darkMode ? 'bg-gray-700/30' : 'bg-slate-50'}`}>
                     <td className="py-2 px-3">
                       {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                       <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</div>
@@ -560,14 +615,40 @@ const TimesheetControl = () => {
                     <td className={`py-2 px-3 text-right font-bold ${entry.overtime >= 0 ? (darkMode ? 'text-emerald-400' : 'text-emerald-600') : (darkMode ? 'text-red-400' : 'text-red-600')}`}>
                       {formatHoursMinutes(entry.workedHours)}
                     </td>
+                    <td className="py-2 px-3 text-right space-x-2">
+                      <button 
+                        onClick={() => { 
+                          const index = entries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
+                          setEditingIndex(index); 
+                          setCurrentEntry(entry);
+                          setCurrentPage('home');
+                        }} 
+                        className={`p-1.5 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-500 hover:bg-slate-100'}`}
+                        title="Editar registro"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const index = entries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
+                          if (window.confirm(`Deseja excluir o registro de ${new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}?`)) {
+                            deleteEntry(index);
+                          }
+                        }} 
+                        className={`p-1.5 rounded ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-500 hover:bg-slate-100'}`}
+                        title="Excluir registro"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {entries.length > 20 && (
-            <p className={`text-xs mt-3 text-center ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-              Mostrando 20 de {entries.length} registros. Exporte o CSV para ver todos.
+          {entries.length === 0 && (
+            <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+              Nenhum registro encontrado
             </p>
           )}
         </div>
