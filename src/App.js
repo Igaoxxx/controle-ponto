@@ -35,7 +35,6 @@ const TimesheetControl = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('home');
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [showCltInfo, setShowCltInfo] = useState(false);
   const isInitialLoad = useRef(true);
 
   useEffect(() => {
