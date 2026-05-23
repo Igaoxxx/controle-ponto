@@ -208,20 +208,30 @@ const TimesheetControl = () => {
   };
 
   const getWeekDates = useCallback((date = new Date()) => {
-    const currentDate = new Date(date);
-    const dayOfWeek = currentDate.getDay();
-    const monday = new Date(currentDate);
-    monday.setDate(currentDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-    const friday = new Date(monday);
-    friday.setDate(monday.getDate() + 4);
-    return { monday, friday };
-  }, []);
+  const currentDate = new Date(date);
+  currentDate.setHours(12, 0, 0, 0);
 
-  const getCurrentWeekDates  = useCallback(() => getWeekDates(new Date()), [getWeekDates]);
-  const getPreviousWeekDates = useCallback(() => {
-    const lw = new Date(); lw.setDate(lw.getDate() - 7);
-    return getWeekDates(lw);
-  }, [getWeekDates]);
+  const dayOfWeek = currentDate.getDay();
+
+  const monday = new Date(currentDate);
+  monday.setDate(currentDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  monday.setHours(0, 0, 0, 0);
+
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  friday.setHours(23, 59, 59, 999);
+
+  return { monday, friday };
+}, []);
+
+  const currentWeekHours = entries
+  .filter(e => {
+    const d = new Date(e.date + 'T12:00:00');
+    const dw = d.getDay();
+    if (dw === 0 || dw === 6) return false;
+    return d.getTime() >= cM.getTime() && d.getTime() <= cF.getTime();
+  })
+  .reduce((sum, e) => sum + e.workedHours, 0);
 
   // ── Registros do mês atual ────────────────────────────────────────────────
   const currentMonthEntries = useMemo(() => {
@@ -260,13 +270,13 @@ const TimesheetControl = () => {
 
     const { monday: pM, friday: pF } = getPreviousWeekDates();
     const previousWeekHours = entries
-      .filter(e => {
-        const d = new Date(e.date + 'T12:00:00');
-        const dw = d.getDay();
-        if (dw === 0 || dw === 6) return false;
-        return d >= pM && d <= pF;
-      })
-      .reduce((sum, e) => sum + e.workedHours, 0);
+  .filter(e => {
+    const d = new Date(e.date + 'T12:00:00');
+    const dw = d.getDay();
+    if (dw === 0 || dw === 6) return false;
+    return d.getTime() >= pM.getTime() && d.getTime() <= pF.getTime();
+  })
+  .reduce((sum, e) => sum + e.workedHours, 0);
 
     return { ...totals, autoCompensated, currentWeekHours, previousWeekHours };
   }, [entries, getCurrentWeekDates, getPreviousWeekDates]);
