@@ -224,14 +224,15 @@ const TimesheetControl = () => {
   return { monday, friday };
 }, []);
 
-  const currentWeekHours = entries
-  .filter(e => {
-    const d = new Date(e.date + 'T12:00:00');
-    const dw = d.getDay();
-    if (dw === 0 || dw === 6) return false;
-    return d.getTime() >= cM.getTime() && d.getTime() <= cF.getTime();
-  })
-  .reduce((sum, e) => sum + e.workedHours, 0);
+  const getCurrentWeekDates = useCallback(() => {
+    return getWeekDates(new Date());
+  }, [getWeekDates]);
+
+  const getPreviousWeekDates = useCallback(() => {
+    const previousWeek = new Date();
+    previousWeek.setDate(previousWeek.getDate() - 7);
+    return getWeekDates(previousWeek);
+  }, [getWeekDates]);
 
   // ── Registros do mês atual ────────────────────────────────────────────────
   const currentMonthEntries = useMemo(() => {
