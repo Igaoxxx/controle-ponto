@@ -26,7 +26,8 @@ const TimesheetControl = () => {
     lunchIn: '',
     exit: '',
     isHalfDay: false,
-    isAbsence: false
+    isAbsence: false,
+    isHoliday: false
   });
   const [suggestedExit, setSuggestedExit] = useState('');
   const [editingIndex, setEditingIndex] = useState(null);
@@ -149,10 +150,10 @@ const TimesheetControl = () => {
     if (!currentEntry.date) { alert('Selecione uma data'); return; }
 
     const day = new Date(currentEntry.date + 'T12:00:00').getDay();
-    const expected = (day === 0 || day === 6) ? 0 : (day === 5 ? 8 : 9);
+    const expected = currentEntry.isHoliday ? 0 : (day === 0 || day === 6) ? 0 : (day === 5 ? 8 : 9);
 
     let worked = 0;
-    if (!currentEntry.isAbsence && currentEntry.entry && currentEntry.exit) {
+    if (!currentEntry.isAbsence && !currentEntry.isHoliday && currentEntry.entry && currentEntry.exit) {
       worked = calculateHours(
         currentEntry.entry,
         currentEntry.lunchOut,
@@ -195,7 +196,7 @@ const TimesheetControl = () => {
     setCurrentEntry({
       date: new Date().toISOString().split('T')[0],
       entry: '', lunchOut: '', lunchIn: '', exit: '',
-      isHalfDay: false, isAbsence: false
+      isHalfDay: false, isAbsence: false, isHoliday: false
     });
     setSuggestedExit('');
   };
@@ -300,7 +301,7 @@ const TimesheetControl = () => {
       e.dayOfWeek, e.entry || '-', e.lunchOut || '-', e.lunchIn || '-', e.exit || '-',
       formatHoursMinutes(e.workedHours), formatHoursMinutes(e.expectedHours),
       (e.overtime > 0 ? '+' : '') + formatHoursMinutes(e.overtime),
-      e.isAbsence ? 'Falta/Dispensa' : e.isHalfDay ? 'Meio Período' : 'Completo'
+      e.isHoliday ? 'Feriado' : e.isAbsence ? 'Falta/Dispensa' : e.isHalfDay ? 'Meio Período' : 'Completo'
     ]);
 
     const totals = filtered.reduce((acc, e) => ({
@@ -345,7 +346,7 @@ const TimesheetControl = () => {
                 value={currentEntry.date}
                 onChange={e => setCurrentEntry({...currentEntry, date: e.target.value})} />
             </div>
-            {!currentEntry.isAbsence && (
+            {!currentEntry.isAbsence && !currentEntry.isHoliday && (
               <>
                 <div>
                   <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Entrada</label>
@@ -386,7 +387,7 @@ const TimesheetControl = () => {
                 {editingIndex !== null ? 'Atualizar' : 'Lançar'}
               </button>
               {editingIndex !== null && (
-                <button onClick={() => { setEditingIndex(null); setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', lunchOut: '', lunchIn: '', exit: '', isHalfDay: false, isAbsence: false }); }}
+                <button onClick={() => { setEditingIndex(null); setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', lunchOut: '', lunchIn: '', exit: '', isHalfDay: false, isAbsence: false, isHoliday: false }); }}
                   className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-slate-100'}`}>
                   <X size={20}/>
                 </button>
@@ -403,6 +404,11 @@ const TimesheetControl = () => {
               <input type="checkbox" className="w-4 h-4 rounded" checked={currentEntry.isAbsence}
                 onChange={e => setCurrentEntry({...currentEntry, isAbsence: e.target.checked})} />
               Falta / Dispensa
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-amber-400">
+            <input type="checkbox" className="w-4 h-4 rounded" checked={currentEntry.isHoliday}
+              onChange={e => setCurrentEntry({...currentEntry, isHoliday: e.target.checked})} />
+            Feriado
             </label>
           </div>
 
@@ -516,13 +522,13 @@ const TimesheetControl = () => {
                 </thead>
                 <tbody>
                   {currentMonthEntries.map((entry, i) => (
-                    <tr key={i} className={`border-b ${darkMode ? 'border-gray-700/50 hover:bg-gray-700/50' : 'border-slate-100 hover:bg-slate-50'} ${entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : ''}`}>
+                    <tr key={i} className={`border-b ${darkMode ? 'border-gray-700/50 hover:bg-gray-700/50' : 'border-slate-100 hover:bg-slate-50'} ${entry.isHoliday ? (darkMode ? 'bg-amber-900/20' : 'bg-amber-50/30') : entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : ''}`}>
                       <td className="px-6 py-4">
                         <span className="block font-bold">{new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                         <span className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</span>
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        {entry.isAbsence ? (
+                        {entry.isHoliday ? (<span className={`font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>FERIADO</span>) : entry.isAbsence ? (
                           <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>FALTA / DISPENSA</span>
                         ) : (
                           <div className="space-y-0.5">
@@ -533,7 +539,7 @@ const TimesheetControl = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 text-center font-bold">
-                        {entry.isAbsence ? '–' : formatHoursMinutes(entry.workedHours)}
+                        {(entry.isAbsence || entry.isHoliday) ? '–' : formatHoursMinutes(entry.workedHours)}
                       </td>
                       <td className={`px-6 py-4 text-center font-black ${entry.overtime >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                         {entry.overtime > 0 ? '+' : ''}{formatHoursMinutes(entry.overtime)}
@@ -684,7 +690,7 @@ const TimesheetControl = () => {
                       {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                       <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</div>
                     </td>
-                    <td className="py-2 px-3">{entry.entry || '–'}</td>
+                    <td className="py-2 px-3">{entry.isHoliday ? 'Feriado' : (entry.entry || '–')}</td>
                     <td className="py-2 px-3">
                       {entry.lunchOut && entry.lunchIn ? `${entry.lunchOut} → ${entry.lunchIn}` : '1h automática'}
                     </td>
