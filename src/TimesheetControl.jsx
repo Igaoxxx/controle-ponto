@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info } from 'lucide-react';
+88import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info, Eraser } from 'lucide-react';
 
 // ─── CLT §58 §1º: tolerância de 5 minutos por marcação (máx 10min/dia) ────────
 // Se a diferença entre o horário marcado e o horário padrão for ≤ 5min, ela é
@@ -208,6 +208,30 @@ const TimesheetControl = () => {
       setEntries(updated);
     }
   };
+const zerarHoras = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const temSaldoMesesAnteriores = entries.some(e => {
+    const d = new Date(e.date + 'T12:00:00');
+    return (d.getFullYear() !== year || d.getMonth() !== month) && e.overtime !== 0;
+  });
+
+  if (!temSaldoMesesAnteriores) {
+    alert('Nao ha horas de meses anteriores para zerar.');
+    return;
+  }
+
+  if (window.confirm('Isso ira zerar as horas (positivas ou negativas) de meses anteriores, mantendo os registros de ponto e o saldo apenas do mes atual. Os registros nao serao apagados. Deseja continuar?')) {
+    const atualizados = entries.map(e => {
+      const d = new Date(e.date + 'T12:00:00');
+      const ehMesAtual = d.getFullYear() === year && d.getMonth() === month;
+      return ehMesAtual ? e : { ...e, overtime: 0 };
+    });
+    setEntries(atualizados);
+  }
+};
 
   const getWeekDates = useCallback((date = new Date()) => {
     const currentDate = new Date(date);
@@ -793,7 +817,10 @@ const TimesheetControl = () => {
               <button onClick={() => window.location.reload()} className={`p-2 rounded-full ${darkMode ? 'text-gray-300' : 'text-slate-400'}`}>
                 <RefreshCw size={20}/>
               </button>
-              <button onClick={() => { if(window.confirm('Limpar todos os registros?')) setEntries([]); }} className="p-2 rounded-full text-red-400">
+              <button onClick={zerarHoras} title="Zerar horas de meses anteriores (mantem apenas o mes atual)" className="p-2 rounded-full text-amber-400">
+              <Eraser size={20}/>
+              </button>
+            <button onClick={() => { if(window.confirm('Limpar todos os registros?')) setEntries([]); }} className="p-2 rounded-full text-red-400">
                 <Trash2 size={20}/>
               </button>
             </div>
