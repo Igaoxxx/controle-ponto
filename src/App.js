@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info, LogOut } from 'lucide-react';
 
 // ─── CLT §58 §1º: tolerância de 5 minutos por marcação (máx 10min/dia) ────────
 // Se a diferença entre o horário marcado e o horário padrão for ≤ 5min, ela é
@@ -37,29 +38,57 @@ const TimesheetControl = () => {
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
   const isInitialLoad = useRef(true);
 
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
   useEffect(() => {
-    if (isInitialLoad.current) {
-      try {
-        const savedEntries = localStorage.getItem('timesheet_entries');
-        if (savedEntries) setEntries(JSON.parse(savedEntries));
-        const savedGoal = localStorage.getItem('hours_goal');
-        if (savedGoal) setHoursGoal(JSON.parse(savedGoal));
-        const savedDarkMode = localStorage.getItem('dark_mode');
-        if (savedDarkMode !== null) setDarkMode(JSON.parse(savedDarkMode));
-      } catch (e) {
-        console.error("Erro ao carregar", e);
-      }
-      isInitialLoad.current = false;
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!isInitialLoad.current) {
-      localStorage.setItem('timesheet_entries', JSON.stringify(entries));
-      localStorage.setItem('hours_goal', JSON.stringify(hoursGoal));
-      localStorage.setItem('dark_mode', JSON.stringify(darkMode));
-    }
-  }, [entries, hoursGoal, darkMode]);
+    if (!session) return;
+    isInitialLoad.current = true;
+    const loadData = async () => {
+      const { data, error } = await supabase
+      .from('timesheet_data')
+      .select('entries, hours_goal, dark_mode')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+      if (error) console.error('Erro ao carregar dados', error);
+      if (data) {
+        if (data.entries) setEntries(data.entries);
+        if (data.hours_goal) setHoursGoal(data.hours_goal);
+        if (data.dark_mode !== null) setDarkMode(data.dark_mode);
+      }
+      isInitialLoad.current = false;
+    };
+    loadData();
+  }, [session]);
+
+  useEffect(() => {
+    if (isInitialLoad.current || !session) return;
+    const saveData = async () => {
+      const { error } = await supabase.from('timesheet_data').upsert({
+        user_id: session.user.id,
+        entries,
+        hours_goal: hoursGoal,
+        dark_mode: darkMode,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) console.error('Erro ao salvar dados', error);
+    };
+    saveData();
+  }, [entries, hoursGoal, darkMode, session]);
 
   const formatHoursMinutes = (h) => {
     if (h === 0) return '0h00m';
@@ -282,7 +311,44 @@ const TimesheetControl = () => {
     return { ...totals, autoCompensated, currentWeekHours, previousWeekHours };
   }, [entries, getCurrentWeekDates, getPreviousWeekDates]);
 
-  const getProgressPercentage = () => {
+  const handleSignIn = async () => {
+    setAuthError('');
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+    if (error) setAuthError(error.message);
+  };
+  
+  const handleSignUp = async () => {
+    setAuthError('');
+    const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    if (error) setAuthError(error.message);
+    else setAuthError('Verifique seu e-mail para confirmar o cadastro.');
+  };
+  
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+  
+  if (authLoading) {
+    return <div className="flex items-center justify-center h-screen">Carregando...</div>;
+  }
+  
+  if (!session) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+      <div className="w-80 space-y-3">
+      <input className="w-full border p-2 rounded" type="email" placeholder="E-mail"
+      value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+    <input className="w-full border p-2 rounded" type="password" placeholder="Senha"
+    value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+{authError && <p className="text-red-500 text-sm">{authError}</p>}
+  <button className="w-full bg-blue-600 text-white p-2 rounded" onClick={handleSignIn}>Entrar</button>
+  <button className="w-full border p-2 rounded" onClick={handleSignUp}>Criar conta</button>
+  </div>
+  </div>
+  );
+}
+
+const getProgressPercentage = () => {
     if (hoursGoal.total <= 0) return 0;
     const compensated = Math.max(0, summary.autoCompensated || 0);
     return Math.min(100, (compensated / hoursGoal.total) * 100);
