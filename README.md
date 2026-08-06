@@ -2,6 +2,36 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Configuração do Supabase (login e armazenamento de dados)
+
+O app usa o [Supabase](https://supabase.com) para autenticação (e-mail/senha) e para
+guardar os registros de ponto de cada usuário. Siga os passos abaixo antes de rodar
+o projeto:
+
+1. Crie um projeto gratuito em [app.supabase.com](https://app.supabase.com).
+2. Em **Project Settings > API**, copie a **Project URL** e a chave **anon public**.
+3. Copie `.env.example` para `.env.local` e preencha com esses valores:
+
+   ```
+   REACT_APP_SUPABASE_URL=https://seu-projeto.supabase.co
+   REACT_APP_SUPABASE_ANON_KEY=sua-chave-anon-publica
+   ```
+
+   O `.env.local` já está no `.gitignore` — nunca commite suas credenciais.
+
+4. No painel do Supabase, abra o **SQL Editor** e execute o conteúdo de
+   [`supabase/schema.sql`](./supabase/schema.sql). Isso cria a tabela
+   `timesheet_data` (uma linha por usuário, com os registros de ponto, a meta
+   de horas e a preferência de tema) e as políticas de **Row Level Security**
+   que garantem que cada usuário só acesse os próprios dados.
+5. (Opcional) Em **Authentication > Providers**, confirme que o provedor
+   **Email** está habilitado. Por padrão o Supabase exige confirmação por
+   e-mail no cadastro — você pode desativar isso em
+   **Authentication > Settings** durante o desenvolvimento, se preferir.
+6. Rode `npm install` e depois `npm start`. A tela de login/cadastro aparece
+   automaticamente; após autenticar, os dados são salvos e carregados do
+   Supabase em vez do `localStorage`.
+
 ## Available Scripts
 
 In the project directory, you can run:
