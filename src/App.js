@@ -43,6 +43,7 @@ const TimesheetControl = () => {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -312,41 +313,61 @@ const TimesheetControl = () => {
   }, [entries, getCurrentWeekDates, getPreviousWeekDates]);
 
   const handleSignIn = async () => {
+    if (!authEmail || !authPassword || authSubmitting) return;
     setAuthError('');
+    setAuthSubmitting(true);
     const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
     if (error) setAuthError(error.message);
+    setAuthSubmitting(false);
   };
-  
+
   const handleSignUp = async () => {
+    if (!authEmail || !authPassword || authSubmitting) return;
     setAuthError('');
+    setAuthSubmitting(true);
     const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
     if (error) setAuthError(error.message);
     else setAuthError('Verifique seu e-mail para confirmar o cadastro.');
+    setAuthSubmitting(false);
   };
-  
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
-  
+
   if (authLoading) {
-    return <div className="flex items-center justify-center h-screen">Carregando...</div>;
+    return <div className={`flex items-center justify-center h-screen ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-slate-50 text-gray-800'}`}>Carregando...</div>;
   }
-  
+
   if (!session) {
     return (
-      <div className="flex items-center justify-center h-screen">
-      <div className="w-80 space-y-3">
-      <input className="w-full border p-2 rounded" type="email" placeholder="E-mail"
-      value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-    <input className="w-full border p-2 rounded" type="password" placeholder="Senha"
-    value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
-{authError && <p className="text-red-500 text-sm">{authError}</p>}
-  <button className="w-full bg-blue-600 text-white p-2 rounded" onClick={handleSignIn}>Entrar</button>
-  <button className="w-full border p-2 rounded" onClick={handleSignUp}>Criar conta</button>
-  </div>
-  </div>
-  );
-}
+      <div className={`flex items-center justify-center h-screen ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-slate-50 text-gray-800'}`}>
+        <form
+          className={`w-80 space-y-3 p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}
+          onSubmit={(e) => { e.preventDefault(); handleSignIn(); }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className={darkMode ? "text-blue-400" : "text-blue-600"} size={24} />
+            <h1 className="text-lg font-bold">Controle de Ponto</h1>
+          </div>
+          <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+            type="email" placeholder="E-mail" autoComplete="email"
+            value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+          <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+            type="password" placeholder="Senha" autoComplete="current-password"
+            value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+          {authError && <p className="text-red-500 text-sm">{authError}</p>}
+          <button type="submit" disabled={authSubmitting} className="w-full bg-blue-600 disabled:opacity-60 text-white p-2 rounded font-bold">
+            {authSubmitting ? 'Entrando...' : 'Entrar'}
+          </button>
+          <button type="button" disabled={authSubmitting} onClick={handleSignUp}
+            className={`w-full border p-2 rounded disabled:opacity-60 ${darkMode ? 'border-gray-600' : 'border-slate-300'}`}>
+            Criar conta
+          </button>
+        </form>
+      </div>
+    );
+  }
 
 const getProgressPercentage = () => {
     if (hoursGoal.total <= 0) return 0;
@@ -865,6 +886,9 @@ const getProgressPercentage = () => {
               </button>
               <button onClick={() => { if(window.confirm('Limpar todos os registros?')) setEntries([]); }} className="p-2 rounded-full text-red-400">
                 <Trash2 size={20}/>
+              </button>
+              <button onClick={handleSignOut} title="Sair" className={`p-2 rounded-full ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <LogOut size={20}/>
               </button>
             </div>
           </div>
