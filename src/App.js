@@ -40,6 +40,8 @@ const TimesheetControl = () => {
 
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState('signin'); // 'signin' | 'signup'
+  const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -61,10 +63,10 @@ const TimesheetControl = () => {
     isInitialLoad.current = true;
     const loadData = async () => {
       const { data, error } = await supabase
-      .from('timesheet_data')
-      .select('entries, hours_goal, dark_mode')
-      .eq('user_id', session.user.id)
-      .maybeSingle();
+        .from('timesheet_data')
+        .select('entries, hours_goal, dark_mode')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
       if (error) console.error('Erro ao carregar dados', error);
       if (data) {
         if (data.entries) setEntries(data.entries);
@@ -118,18 +120,18 @@ const TimesheetControl = () => {
     };
 
     const entryMin = toMin(entry);
-    const exitMin  = toMin(exit);
+    const exitMin = toMin(exit);
 
     let totalMinutes = 0;
 
     if (lunchOut && lunchIn) {
       const lunchOutMin = toMin(lunchOut);
-      const lunchInMin  = toMin(lunchIn);
+      const lunchInMin = toMin(lunchIn);
 
       // Tolerância CLT nas bordas de almoço (5 min)
       // Se o funcionário voltou até 5min antes/depois → arredonda para o horário nominal
       const adjLunchOut = applyTolerance(lunchOut, lunchOutMin); // sem referência externa — usa bruto
-      const adjLunchIn  = applyTolerance(lunchIn,  lunchInMin);
+      const adjLunchIn = applyTolerance(lunchIn, lunchInMin);
 
       // Manhã
       totalMinutes += adjLunchOut - entryMin;
@@ -238,21 +240,21 @@ const TimesheetControl = () => {
   };
 
   const getWeekDates = useCallback((date = new Date()) => {
-  const currentDate = new Date(date);
-  currentDate.setHours(12, 0, 0, 0);
+    const currentDate = new Date(date);
+    currentDate.setHours(12, 0, 0, 0);
 
-  const dayOfWeek = currentDate.getDay();
+    const dayOfWeek = currentDate.getDay();
 
-  const monday = new Date(currentDate);
-  monday.setDate(currentDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  monday.setHours(0, 0, 0, 0);
+    const monday = new Date(currentDate);
+    monday.setDate(currentDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    monday.setHours(0, 0, 0, 0);
 
-  const friday = new Date(monday);
-  friday.setDate(monday.getDate() + 4);
-  friday.setHours(23, 59, 59, 999);
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+    friday.setHours(23, 59, 59, 999);
 
-  return { monday, friday };
-}, []);
+    return { monday, friday };
+  }, []);
 
   const getCurrentWeekDates = useCallback(() => {
     return getWeekDates(new Date());
@@ -267,7 +269,7 @@ const TimesheetControl = () => {
   // ── Registros do mês atual ────────────────────────────────────────────────
   const currentMonthEntries = useMemo(() => {
     const now = new Date();
-    const year  = now.getFullYear();
+    const year = now.getFullYear();
     const month = now.getMonth(); // 0-indexed
     return entries
       .filter(e => {
@@ -283,7 +285,7 @@ const TimesheetControl = () => {
 
   const summary = useMemo(() => {
     const totals = entries.reduce((acc, e) => ({
-      worked:   acc.worked   + e.workedHours,
+      worked: acc.worked + e.workedHours,
       overtime: acc.overtime + e.overtime
     }), { worked: 0, overtime: 0 });
 
@@ -301,13 +303,13 @@ const TimesheetControl = () => {
 
     const { monday: pM, friday: pF } = getPreviousWeekDates();
     const previousWeekHours = entries
-  .filter(e => {
-    const d = new Date(e.date + 'T12:00:00');
-    const dw = d.getDay();
-    if (dw === 0 || dw === 6) return false;
-    return d.getTime() >= pM.getTime() && d.getTime() <= pF.getTime();
-  })
-  .reduce((sum, e) => sum + e.workedHours, 0);
+      .filter(e => {
+        const d = new Date(e.date + 'T12:00:00');
+        const dw = d.getDay();
+        if (dw === 0 || dw === 6) return false;
+        return d.getTime() >= pM.getTime() && d.getTime() <= pF.getTime();
+      })
+      .reduce((sum, e) => sum + e.workedHours, 0);
 
     return { ...totals, autoCompensated, currentWeekHours, previousWeekHours };
   }, [entries, getCurrentWeekDates, getPreviousWeekDates]);
@@ -325,7 +327,11 @@ const TimesheetControl = () => {
     if (!authEmail || !authPassword || authSubmitting) return;
     setAuthError('');
     setAuthSubmitting(true);
-    const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    const { error } = await supabase.auth.signUp({
+      email: authEmail,
+      password: authPassword,
+      options: { data: { full_name: authName } }
+    });
     if (error) setAuthError(error.message);
     else setAuthError('Verifique seu e-mail para confirmar o cadastro.');
     setAuthSubmitting(false);
@@ -340,36 +346,46 @@ const TimesheetControl = () => {
   }
 
   if (!session) {
+    const isSignUp = authMode === 'signup';
     return (
       <div className={`flex items-center justify-center h-screen ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-slate-50 text-gray-800'}`}>
         <form
           className={`w-80 space-y-3 p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}
-          onSubmit={(e) => { e.preventDefault(); handleSignIn(); }}
+          onSubmit={(e) => { e.preventDefault(); isSignUp ? handleSignUp() : handleSignIn(); }}
         >
           <div className="flex items-center gap-2 mb-2">
             <Clock className={darkMode ? "text-blue-400" : "text-blue-600"} size={24} />
             <h1 className="text-lg font-bold">Controle de Ponto</h1>
           </div>
+          <p className={`text-sm -mt-1 mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+            {isSignUp ? 'Crie sua conta para começar' : 'Entre com sua conta'}
+          </p>
+          {isSignUp && (
+            <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+              type="text" placeholder="Nome" autoComplete="name"
+              value={authName} onChange={(e) => setAuthName(e.target.value)} />
+          )}
           <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
             type="email" placeholder="E-mail" autoComplete="email"
             value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
           <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
-            type="password" placeholder="Senha" autoComplete="current-password"
+            type="password" placeholder="Senha" autoComplete={isSignUp ? 'new-password' : 'current-password'}
             value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
           {authError && <p className="text-red-500 text-sm">{authError}</p>}
           <button type="submit" disabled={authSubmitting} className="w-full bg-blue-600 disabled:opacity-60 text-white p-2 rounded font-bold">
-            {authSubmitting ? 'Entrando...' : 'Entrar'}
+            {authSubmitting ? (isSignUp ? 'Criando conta...' : 'Entrando...') : (isSignUp ? 'Criar conta' : 'Entrar')}
           </button>
-          <button type="button" disabled={authSubmitting} onClick={handleSignUp}
-            className={`w-full border p-2 rounded disabled:opacity-60 ${darkMode ? 'border-gray-600' : 'border-slate-300'}`}>
-            Criar conta
+          <button type="button" disabled={authSubmitting}
+            onClick={() => { setAuthMode(isSignUp ? 'signin' : 'signup'); setAuthError(''); }}
+            className={`w-full text-sm font-medium p-2 rounded disabled:opacity-60 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-slate-100'}`}>
+            {isSignUp ? 'Já tem conta? Entrar' : 'Não tem conta? Criar conta'}
           </button>
         </form>
       </div>
     );
   }
 
-const getProgressPercentage = () => {
+  const getProgressPercentage = () => {
     if (hoursGoal.total <= 0) return 0;
     const compensated = Math.max(0, summary.autoCompensated || 0);
     return Math.min(100, (compensated / hoursGoal.total) * 100);
@@ -378,7 +394,7 @@ const getProgressPercentage = () => {
   const getProgressColor = () => {
     const p = getProgressPercentage();
     if (p >= 100) return 'bg-emerald-500';
-    if (p >= 70)  return 'bg-amber-500';
+    if (p >= 70) return 'bg-amber-500';
     return 'bg-blue-500';
   };
 
@@ -401,7 +417,7 @@ const getProgressPercentage = () => {
     ]);
 
     const totals = filtered.reduce((acc, e) => ({
-      worked:   acc.worked   + e.workedHours,
+      worked: acc.worked + e.workedHours,
       expected: acc.expected + e.expectedHours,
       overtime: acc.overtime + e.overtime
     }), { worked: 0, expected: 0, overtime: 0 });
@@ -410,7 +426,7 @@ const getProgressPercentage = () => {
     rows.push(['TOTAIS','','','','','',formatHoursMinutes(totals.worked),formatHoursMinutes(totals.expected),(totals.overtime > 0 ? '+' : '') + formatHoursMinutes(totals.overtime),'']);
 
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `ponto_${year}_${month}.csv`;
@@ -419,6 +435,8 @@ const getProgressPercentage = () => {
 
   // Mês atual formatado para exibição
   const currentMonthLabel = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const displayName = session?.user?.user_metadata?.full_name || session?.user?.email || '';
 
   const renderHomePage = () => (
     <>
@@ -820,9 +838,9 @@ const getProgressPercentage = () => {
 
   const renderContent = () => {
     switch (currentPage) {
-      case 'home':    return renderHomePage();
+      case 'home': return renderHomePage();
       case 'reports': return renderReportsPage();
-      default:        return renderHomePage();
+      default: return renderHomePage();
     }
   };
 
@@ -839,7 +857,7 @@ const getProgressPercentage = () => {
         </div>
         <nav className="p-4 space-y-2">
           {[
-            { id: 'home',    label: 'Início',     Icon: Home },
+            { id: 'home', label: 'Início', Icon: Home },
             { id: 'reports', label: 'Relatórios', Icon: FileText }
           ].map(({ id, label, Icon }) => (
             <button key={id}
@@ -878,6 +896,9 @@ const getProgressPercentage = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <span className={`hidden sm:block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>
+                Olá, {displayName}
+              </span>
               <button onClick={() => setDarkMode(!darkMode)} className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300' : 'bg-slate-200 text-gray-700'}`}>
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
