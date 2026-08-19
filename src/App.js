@@ -47,6 +47,29 @@ const TimesheetControl = () => {
   const [authError, setAuthError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
+  const [cloudDataLoaded, setCloudDataLoaded] = useState(false);
+  const [localBackup, setLocalBackup] = useState(null);
+
+  // Detecta registros salvos localmente (versão anterior à sincronização com o Supabase)
+  useEffect(() => {
+    if (localStorage.getItem('supabase_migration_done')) return;
+    try {
+      const savedEntries = localStorage.getItem('timesheet_entries');
+      const parsedEntries = savedEntries ? JSON.parse(savedEntries) : [];
+      if (Array.isArray(parsedEntries) && parsedEntries.length > 0) {
+        const savedGoal = localStorage.getItem('hours_goal');
+        setLocalBackup({
+          entries: parsedEntries,
+          hoursGoal: savedGoal ? JSON.parse(savedGoal) : null,
+        });
+      } else {
+        localStorage.setItem('supabase_migration_done', '1');
+      }
+    } catch (e) {
+      console.error('Erro ao ler registros locais', e);
+    }
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -61,6 +84,7 @@ const TimesheetControl = () => {
   useEffect(() => {
     if (!session) return;
     isInitialLoad.current = true;
+    setCloudDataLoaded(false);
     const loadData = async () => {
       const { data, error } = await supabase
         .from('timesheet_data')
@@ -74,6 +98,7 @@ const TimesheetControl = () => {
         if (data.dark_mode !== null) setDarkMode(data.dark_mode);
       }
       isInitialLoad.current = false;
+      setCloudDataLoaded(true);
     };
     loadData();
   }, [session]);
@@ -339,6 +364,24 @@ const TimesheetControl = () => {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  const handleImportLocalData = () => {
+    if (!localBackup) return;
+    const merged = [...entries];
+    localBackup.entries.forEach(localEntry => {
+      if (!merged.some(e => e.date === localEntry.date)) merged.push(localEntry);
+    });
+    merged.sort((a, b) => new Date(b.date) - new Date(a.date));
+    setEntries(merged);
+    if (localBackup.hoursGoal && !hoursGoal.total) setHoursGoal(localBackup.hoursGoal);
+    localStorage.setItem('supabase_migration_done', '1');
+    setLocalBackup(null);
+  };
+
+  const handleDismissLocalImport = () => {
+    localStorage.setItem('supabase_migration_done', '1');
+    setLocalBackup(null);
   };
 
   if (authLoading) {
@@ -913,6 +956,22 @@ const TimesheetControl = () => {
               </button>
             </div>
           </div>
+
+          {cloudDataLoaded && localBackup && (
+            <div className={`p-4 rounded-2xl shadow-lg border flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${darkMode ? 'bg-amber-900/20 border-amber-800 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+              <p className="text-sm">
+                Encontramos <strong>{localBackup.entries.length}</strong> registro{localBackup.entries.length !== 1 ? 's' : ''} salvo{localBackup.entries.length !== 1 ? 's' : ''} neste navegador, de antes da sincronização com a nuvem. Deseja importá-los para esta conta?
+              </p>
+              <div className="flex gap-2 flex-shrink-0">
+                <button onClick={handleImportLocalData} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-bold whitespace-nowrap">
+                  Importar
+                </button>
+                <button onClick={handleDismissLocalImport} className={`px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap ${darkMode ? 'border-amber-700' : 'border-amber-300'}`}>
+                  Ignorar
+                </button>
+              </div>
+            </div>
+          )}
 
           {renderContent()}
         </div>
