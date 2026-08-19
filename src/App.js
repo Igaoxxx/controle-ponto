@@ -739,11 +739,31 @@ const TimesheetControl = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Total de horas a compensar</label>
-                <input type="number" step="1" min="0" inputMode="numeric"
-                  className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
-                  value={hoursGoal.total || ''}
-                  onChange={e => setHoursGoal({...hoursGoal, total: Math.max(0, parseInt(e.target.value, 10) || 0)})} />
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Somente horas inteiras (ex: 40)</p>
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <input type="number" step="1" min="0" inputMode="numeric" placeholder="0"
+                      className={`w-full rounded-lg p-3 pr-8 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+                      value={Math.floor(hoursGoal.total || 0) || ''}
+                      onChange={e => {
+                        const goalHours = Math.max(0, parseInt(e.target.value, 10) || 0);
+                        const goalMinutes = Math.round(((hoursGoal.total || 0) % 1) * 60);
+                        setHoursGoal({...hoursGoal, total: goalHours + goalMinutes / 60});
+                      }} />
+                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>h</span>
+                  </div>
+                  <div className="flex-1 relative">
+                    <input type="number" step="1" min="0" max="59" inputMode="numeric" placeholder="0"
+                      className={`w-full rounded-lg p-3 pr-10 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+                      value={Math.round(((hoursGoal.total || 0) % 1) * 60) || ''}
+                      onChange={e => {
+                        const goalHours = Math.floor(hoursGoal.total || 0);
+                        const goalMinutes = Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0));
+                        setHoursGoal({...hoursGoal, total: goalHours + goalMinutes / 60});
+                      }} />
+                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>min</span>
+                  </div>
+                </div>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Ex: 1h e 56min</p>
               </div>
               <div>
                 <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data limite</label>
