@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabaseClient';
-import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info, LogOut, Eraser } from 'lucide-react';
+import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info, LogOut, Eraser, Calculator, ChevronRight, Minus } from 'lucide-react';
 
 // ─── CLT §58 §1º: tolerância de 5 minutos por marcação (máx 10min/dia) ────────
 // Se a diferença entre o horário marcado e o horário padrão for ≤ 5min, ela é
@@ -37,6 +37,12 @@ const TimesheetControl = () => {
   const [currentPage, setCurrentPage] = useState('home');
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
   const isInitialLoad = useRef(true);
+
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calcTab, setCalcTab] = useState('sum'); // 'sum' | 'diff'
+  const [calcRows, setCalcRows] = useState([{ time: '', op: '+' }, { time: '', op: '+' }]);
+  const [diffStart, setDiffStart] = useState('');
+  const [diffEnd, setDiffEnd] = useState('');
 
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -125,6 +131,41 @@ const TimesheetControl = () => {
     const mins = Math.round((abs - hours) * 60);
     return `${h < 0 ? '-' : ''}${hours}h${mins.toString().padStart(2, '0')}m`;
   };
+
+  // ── Calculadora de horários (soma/subtração e diferença) ───────────────────
+  const timeToMinutes = (t) => {
+    if (!t) return 0;
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  const formatSignedMinutes = (totalMinutes) => {
+    const neg = totalMinutes < 0;
+    const abs = Math.abs(totalMinutes);
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    return `${neg ? '-' : ''}${h}h${String(m).padStart(2, '0')}m`;
+  };
+
+  const calcSumMinutes = useMemo(() => {
+    return calcRows.reduce((acc, row, i) => {
+      const mins = timeToMinutes(row.time);
+      if (i === 0) return mins;
+      return row.op === '-' ? acc - mins : acc + mins;
+    }, 0);
+  }, [calcRows]);
+
+  const addCalcRow = () => setCalcRows([...calcRows, { time: '', op: '+' }]);
+  const removeCalcRow = (i) => setCalcRows(calcRows.filter((_, idx) => idx !== i));
+  const updateCalcRow = (i, field, value) => setCalcRows(calcRows.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  const resetCalcRows = () => setCalcRows([{ time: '', op: '+' }, { time: '', op: '+' }]);
+
+  const calcDiffMinutes = useMemo(() => {
+    if (!diffStart || !diffEnd) return null;
+    let diff = timeToMinutes(diffEnd) - timeToMinutes(diffStart);
+    if (diff < 0) diff += 1440; // assume que passou da meia-noite
+    return diff;
+  }, [diffStart, diffEnd]);
 
   const getDayOfWeek = (d) => {
     const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -946,10 +987,117 @@ const TimesheetControl = () => {
               <Icon size={20} /> {label}
             </button>
           ))}
+          <button
+            onClick={() => { setCalculatorOpen(true); setSidebarOpen(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-slate-100 text-slate-700'}`}>
+            <Calculator size={20} /> Calculadoras
+          </button>
         </nav>
       </div>
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)}></div>}
+
+      {/* PAINEL DE CALCULADORAS — ocupa só parte da tela, sem bloquear o resto */}
+      <div className={`fixed inset-y-0 right-0 z-50 w-full max-w-sm md:max-w-md transform transition-transform duration-300 ease-in-out ${calculatorOpen ? 'translate-x-0' : 'translate-x-full'} ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'} border-l shadow-2xl flex flex-col`}>
+        <div className={`flex items-center justify-between p-5 border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
+          <div className="flex items-center gap-2">
+            <Calculator className={darkMode ? "text-blue-400" : "text-blue-600"} size={22} />
+            <h2 className="text-lg font-bold">Calculadoras</h2>
+          </div>
+          <button onClick={() => setCalculatorOpen(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100'}`}>
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        <div className={`flex border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
+          <button onClick={() => setCalcTab('sum')}
+            className={`flex-1 py-3 text-sm font-bold ${calcTab === 'sum'
+              ? (darkMode ? 'text-blue-400 border-b-2 border-blue-400' : 'text-blue-600 border-b-2 border-blue-600')
+              : (darkMode ? 'text-gray-500' : 'text-slate-400')}`}>
+            Soma / Subtração
+          </button>
+          <button onClick={() => setCalcTab('diff')}
+            className={`flex-1 py-3 text-sm font-bold ${calcTab === 'diff'
+              ? (darkMode ? 'text-blue-400 border-b-2 border-blue-400' : 'text-blue-600 border-b-2 border-blue-600')
+              : (darkMode ? 'text-gray-500' : 'text-slate-400')}`}>
+            Diferença entre Horários
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          {calcTab === 'sum' ? (
+            <>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                Some ou subtraia vários horários (formato HH:MM) e veja o total.
+              </p>
+              <div className="space-y-2">
+                {calcRows.map((row, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    {i === 0 ? (
+                      <span className={`w-9 text-center text-sm font-bold ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>&nbsp;</span>
+                    ) : (
+                      <button type="button"
+                        onClick={() => updateCalcRow(i, 'op', row.op === '+' ? '-' : '+')}
+                        className={`w-9 h-9 flex-shrink-0 rounded-lg font-bold flex items-center justify-center ${row.op === '-'
+                          ? (darkMode ? 'bg-red-900/40 text-red-400' : 'bg-red-50 text-red-600')
+                          : (darkMode ? 'bg-emerald-900/40 text-emerald-400' : 'bg-emerald-50 text-emerald-600')}`}>
+                        {row.op === '-' ? <Minus size={16} /> : <Plus size={16} />}
+                      </button>
+                    )}
+                    <input type="time" value={row.time}
+                      onChange={e => updateCalcRow(i, 'time', e.target.value)}
+                      className={`flex-1 rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+                    {calcRows.length > 1 && (
+                      <button type="button" onClick={() => removeCalcRow(i)}
+                        className={`p-2 rounded-lg ${darkMode ? 'text-gray-500 hover:bg-gray-700' : 'text-slate-400 hover:bg-slate-100'}`}>
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={addCalcRow}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-bold flex items-center justify-center gap-1.5 ${darkMode ? 'border-gray-700 text-gray-300 hover:bg-gray-700/50' : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                  <Plus size={14} /> Adicionar horário
+                </button>
+                <button type="button" onClick={resetCalcRows}
+                  className={`px-3 py-2 rounded-lg border text-sm font-bold ${darkMode ? 'border-gray-700 text-gray-400 hover:bg-gray-700/50' : 'border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+                  Limpar
+                </button>
+              </div>
+              <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
+                <p className={`text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Resultado</p>
+                <p className={`text-3xl font-black ${calcSumMinutes < 0 ? (darkMode ? 'text-red-400' : 'text-red-600') : (darkMode ? 'text-emerald-400' : 'text-emerald-600')}`}>
+                  {formatSignedMinutes(calcSumMinutes)}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                Informe o horário inicial e final para calcular a duração entre eles. Se o final for menor que o inicial, considera que passou da meia-noite.
+              </p>
+              <div>
+                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horário inicial</label>
+                <input type="time" value={diffStart} onChange={e => setDiffStart(e.target.value)}
+                  className={`w-full rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+              </div>
+              <div>
+                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horário final</label>
+                <input type="time" value={diffEnd} onChange={e => setDiffEnd(e.target.value)}
+                  className={`w-full rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+              </div>
+              <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
+                <p className={`text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Duração</p>
+                <p className={`text-3xl font-black ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                  {calcDiffMinutes === null ? '–' : formatSignedMinutes(calcDiffMinutes)}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* MAIN */}
       <div className="flex-1 p-4 md:p-8">
