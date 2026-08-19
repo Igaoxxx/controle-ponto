@@ -739,10 +739,11 @@ const TimesheetControl = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Total de horas a compensar</label>
-                <input type="number" step="0.5" min="0"
+                <input type="number" step="1" min="0" inputMode="numeric"
                   className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
                   value={hoursGoal.total || ''}
-                  onChange={e => setHoursGoal({...hoursGoal, total: Math.max(0, parseFloat(e.target.value) || 0)})} />
+                  onChange={e => setHoursGoal({...hoursGoal, total: Math.max(0, parseInt(e.target.value, 10) || 0)})} />
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Somente horas inteiras (ex: 40)</p>
               </div>
               <div>
                 <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data limite</label>
