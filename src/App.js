@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabaseClient';
-import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info, LogOut } from 'lucide-react';
+import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info, LogOut, Eraser } from 'lucide-react';
 
 // ─── CLT §58 §1º: tolerância de 5 minutos por marcação (máx 10min/dia) ────────
 // Se a diferença entre o horário marcado e o horário padrão for ≤ 5min, ela é
@@ -384,6 +384,12 @@ const TimesheetControl = () => {
     setLocalBackup(null);
   };
 
+  const handleResetAccumulatedBalance = () => {
+    if (window.confirm('Isso vai zerar o saldo acumulado (horas extras ou em débito) de todos os registros. Os registros de ponto não serão apagados, apenas o saldo. Essa ação não pode ser desfeita. Deseja continuar?')) {
+      setEntries(entries.map(e => ({ ...e, overtime: 0 })));
+    }
+  };
+
   if (authLoading) {
     return <div className={`flex items-center justify-center h-screen ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-slate-50 text-gray-800'}`}>Carregando...</div>;
   }
@@ -636,6 +642,12 @@ const TimesheetControl = () => {
               <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>
                 {summary.overtime >= 0 ? 'Horas extras acumuladas' : 'Horas em débito'}
               </p>
+              {summary.overtime !== 0 && (
+                <button onClick={handleResetAccumulatedBalance}
+                  className={`mt-3 w-full text-xs font-bold py-1.5 rounded-lg border flex items-center justify-center gap-1.5 transition-colors ${darkMode ? 'border-gray-700 text-gray-400 hover:bg-gray-700/50' : 'border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+                  <Eraser size={14} /> Zerar saldo acumulado
+                </button>
+              )}
             </div>
           </div>
 
