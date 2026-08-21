@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* O drawer de Calculadoras usa position:fixed + translate-x-full para ficar
+   fora da tela quando fechado; sem isso, seu box ainda conta na largura
+   rolável do documento e força scroll horizontal na página inteira. */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
