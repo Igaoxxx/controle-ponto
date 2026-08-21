@@ -36,7 +36,25 @@ const TimesheetControl = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('home');
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [reportSearch, setReportSearch] = useState('');
   const isInitialLoad = useRef(true);
+  const formRef = useRef(null);
+
+  useEffect(() => {
+    if (editingIndex !== null) {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [editingIndex]);
+
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key !== 'Escape') return;
+      setCalculatorOpen(false);
+      setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, []);
 
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [calcTab, setCalcTab] = useState('sum'); // 'sum' | 'diff'
@@ -349,6 +367,15 @@ const TimesheetControl = () => {
     return [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [entries]);
 
+  const filteredReportEntries = useMemo(() => {
+    const q = reportSearch.trim().toLowerCase();
+    if (!q) return sortedEntries;
+    return sortedEntries.filter(e => {
+      const formatted = new Date(e.date + 'T12:00:00').toLocaleDateString('pt-BR');
+      return e.date.includes(q) || formatted.toLowerCase().includes(q) || (e.dayOfWeek || '').toLowerCase().includes(q);
+    });
+  }, [sortedEntries, reportSearch]);
+
   const summary = useMemo(() => {
     const totals = entries.reduce((acc, e) => ({
       worked: acc.worked + e.workedHours,
@@ -451,14 +478,14 @@ const TimesheetControl = () => {
             {isSignUp ? 'Crie sua conta para começar' : 'Entre com sua conta'}
           </p>
           {isSignUp && (
-            <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+            <input aria-label="Nome" className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
               type="text" placeholder="Nome" autoComplete="name"
               value={authName} onChange={(e) => setAuthName(e.target.value)} />
           )}
-          <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+          <input aria-label="E-mail" className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
             type="email" placeholder="E-mail" autoComplete="email"
             value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-          <input className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
+          <input aria-label="Senha" className={`w-full border p-2 rounded ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
             type="password" placeholder="Senha" autoComplete={isSignUp ? 'new-password' : 'current-password'}
             value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
           {authError && <p className="text-red-500 text-sm">{authError}</p>}
@@ -531,54 +558,68 @@ const TimesheetControl = () => {
   const renderHomePage = () => (
     <>
       {/* FORMULÁRIO */}
-      <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
+      <div ref={formRef} className={`p-6 rounded-2xl shadow-lg border transition-shadow ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'} ${editingIndex !== null ? (darkMode ? 'ring-2 ring-orange-500' : 'ring-2 ring-orange-400') : ''}`}>
         <div className={`flex items-center gap-3 mb-6 pb-4 border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
           <div className={`p-2 rounded-lg ${darkMode ? 'bg-blue-900/50' : 'bg-blue-100'}`}>
             <Clock className={darkMode ? "text-blue-400" : "text-blue-600"} size={24} />
           </div>
           <div>
-            <h2 className="text-xl font-bold">Registro de Ponto</h2>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>Preencha os horários do dia</p>
+            <h2 className="text-xl font-bold">{editingIndex !== null ? 'Editando Registro' : 'Registro de Ponto'}</h2>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+              {editingIndex !== null ? 'Altere os horários e clique em Atualizar' : 'Preencha os horários do dia'}
+            </p>
+          </div>
+        </div>
+
+        {/* Nota CLT */}
+        <div className={`mb-6 p-3 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
+          <div className="flex items-start gap-2">
+            <Info size={15} className={`mt-0.5 flex-shrink-0 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`} />
+            <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>
+              <span className="font-bold">CLT Art. 58 §1º:</span> Variações de até 5 minutos na entrada/saída não são computadas.{' '}
+              Os campos de almoço são opcionais (1h descontada automaticamente se não preenchidos).{' '}
+              Apenas um registro por dia é permitido.
+            </p>
           </div>
         </div>
 
         <div className="rounded-xl p-2">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
-              <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data</label>
-              <input type="date" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
+              <label htmlFor="entry-date" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data</label>
+              <input id="entry-date" type="date" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
                 value={currentEntry.date}
                 onChange={e => setCurrentEntry({...currentEntry, date: e.target.value})} />
             </div>
             {!currentEntry.isAbsence && (
               <>
                 <div>
-                  <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Entrada</label>
-                  <input type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
+                  <label htmlFor="entry-time" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Entrada</label>
+                  <input id="entry-time" type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
                     value={currentEntry.entry}
                     onChange={e => { setCurrentEntry({...currentEntry, entry: e.target.value}); handleSuggestedExit(e.target.value, currentEntry.date); }} />
                 </div>
                 <div>
-                  <label className={`block text-xs font-bold uppercase mb-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
+                  <label htmlFor="lunch-out" className={`block text-xs font-bold uppercase mb-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
                     <Utensils size={12} /> Saída Almoço
                   </label>
-                  <input type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
+                  <input id="lunch-out" type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
                     value={currentEntry.lunchOut}
                     onChange={e => setCurrentEntry({...currentEntry, lunchOut: e.target.value})} />
-                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Opcional</p>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Opcional</p>
                 </div>
                 <div>
-                  <label className={`block text-xs font-bold uppercase mb-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
+                  <label htmlFor="lunch-in" className={`block text-xs font-bold uppercase mb-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
                     <Utensils size={12} /> Retorno Almoço
                   </label>
-                  <input type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
+                  <input id="lunch-in" type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
                     value={currentEntry.lunchIn}
                     onChange={e => setCurrentEntry({...currentEntry, lunchIn: e.target.value})} />
-                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Opcional</p>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Opcional</p>
                 </div>
                 <div>
-                  <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Saída</label>
-                  <input type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
+                  <label htmlFor="exit-time" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Saída</label>
+                  <input id="exit-time" type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
                     value={currentEntry.exit}
                     onChange={e => setCurrentEntry({...currentEntry, exit: e.target.value})} />
                   {suggestedExit && <p className={`text-xs font-bold mt-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Sugestão: {suggestedExit}</p>}
@@ -592,7 +633,7 @@ const TimesheetControl = () => {
               </button>
               {editingIndex !== null && (
                 <button onClick={() => { setEditingIndex(null); setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', lunchOut: '', lunchIn: '', exit: '', isHalfDay: false, isAbsence: false }); }}
-                  className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-slate-100'}`}>
+                  aria-label="Cancelar edição" className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-slate-100'}`}>
                   <X size={20}/>
                 </button>
               )}
@@ -609,18 +650,6 @@ const TimesheetControl = () => {
                 onChange={e => setCurrentEntry({...currentEntry, isAbsence: e.target.checked})} />
               Falta / Dispensa
             </label>
-          </div>
-
-          {/* Nota CLT */}
-          <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
-            <div className="flex items-start gap-2">
-              <Info size={15} className={`mt-0.5 flex-shrink-0 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`} />
-              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>
-                <span className="font-bold">CLT Art. 58 §1º:</span> Variações de até 5 minutos na entrada/saída não são computadas.{' '}
-                Os campos de almoço são opcionais (1h descontada automaticamente se não preenchidos).{' '}
-                Apenas um registro por dia é permitido.
-              </p>
-            </div>
           </div>
         </div>
       </div>
@@ -655,13 +684,13 @@ const TimesheetControl = () => {
             <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
               <div className="flex flex-col gap-1 mb-2">
                 <p className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Semana Anterior</p>
-                <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>
+                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
                   {new Date(getPreviousWeekDates().monday).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'})} –{' '}
                   {new Date(getPreviousWeekDates().friday).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'})}
                 </span>
               </div>
               <p className="text-2xl font-black">{formatHoursMinutes(summary.previousWeekHours || 0)}</p>
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>de 44h semanais</p>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>de 44h semanais</p>
               <div className={`mt-3 h-1.5 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-slate-200'}`}>
                 <div className={`h-full ${darkMode ? 'bg-gray-400' : 'bg-slate-400'} transition-all duration-500`}
                   style={{ width: `${Math.min((summary.previousWeekHours / 44) * 100, 100)}%` }}></div>
@@ -680,7 +709,7 @@ const TimesheetControl = () => {
                 : (darkMode ? 'text-red-300' : 'text-red-700')}`}>
                 {summary.overtime > 0 ? '+' : ''}{formatHoursMinutes(summary.overtime)}
               </p>
-              <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>
+              <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
                 {summary.overtime >= 0 ? 'Horas extras acumuladas' : 'Horas em débito'}
               </p>
               {summary.overtime !== 0 && (
@@ -700,10 +729,10 @@ const TimesheetControl = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Total de horas a compensar</label>
+                <label htmlFor="goal-hours" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Total de horas a compensar</label>
                 <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <input type="number" step="1" min="0" inputMode="numeric" placeholder="0"
+                  <div className="flex-1 min-w-0 relative">
+                    <input id="goal-hours" aria-label="Horas" type="number" step="1" min="0" inputMode="numeric" placeholder="0"
                       className={`w-full rounded-lg p-3 pr-8 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
                       value={Math.floor(hoursGoal.total || 0) || ''}
                       onChange={e => {
@@ -711,10 +740,10 @@ const TimesheetControl = () => {
                         const goalMinutes = Math.round(((hoursGoal.total || 0) % 1) * 60);
                         setHoursGoal({...hoursGoal, total: goalHours + goalMinutes / 60});
                       }} />
-                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>h</span>
+                    <span aria-hidden="true" className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>h</span>
                   </div>
-                  <div className="flex-1 relative">
-                    <input type="number" step="1" min="0" max="59" inputMode="numeric" placeholder="0"
+                  <div className="flex-1 min-w-0 relative">
+                    <input id="goal-minutes" aria-label="Minutos" type="number" step="1" min="0" max="59" inputMode="numeric" placeholder="0"
                       className={`w-full rounded-lg p-3 pr-10 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
                       value={Math.round(((hoursGoal.total || 0) % 1) * 60) || ''}
                       onChange={e => {
@@ -722,14 +751,14 @@ const TimesheetControl = () => {
                         const goalMinutes = Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0));
                         setHoursGoal({...hoursGoal, total: goalHours + goalMinutes / 60});
                       }} />
-                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>min</span>
+                    <span aria-hidden="true" className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>min</span>
                   </div>
                 </div>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>Ex: 1h e 56min</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Ex: 1h e 56min</p>
               </div>
               <div>
-                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data limite</label>
-                <input type="date"
+                <label htmlFor="goal-deadline" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Data limite</label>
+                <input id="goal-deadline" type="date"
                   className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
                   value={hoursGoal.deadline}
                   onChange={e => setHoursGoal({...hoursGoal, deadline: e.target.value})} />
@@ -774,63 +803,67 @@ const TimesheetControl = () => {
             </div>
 
             {currentMonthEntries.length === 0 ? (
-              <div className={`p-10 text-center ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>
+              <div className={`p-10 text-center ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
                 Nenhum registro para {currentMonthLabel}.
               </div>
             ) : (
-              <table className="w-full">
-                <thead className={darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}>
-                  <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
-                    <th className="px-6 py-4 text-xs font-bold uppercase text-left">Data</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase text-left">Período</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase text-center">Horas Trabalhadas</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase text-center">Saldo</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {currentMonthEntries.map((entry, i) => (
-                    <tr key={i} className={`border-b ${darkMode ? 'border-gray-700/50 hover:bg-gray-700/50' : 'border-slate-100 hover:bg-slate-50'} ${entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : ''}`}>
-                      <td className="px-6 py-4">
-                        <span className="block font-bold">{new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                        <span className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</span>
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        {entry.isAbsence ? (
-                          <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>FALTA / DISPENSA</span>
-                        ) : (
-                          <div className="space-y-0.5">
-                            <div><span className="font-medium">Entrada:</span> {entry.entry}</div>
-                            <div><span className="font-medium">Almoço:</span> {entry.lunchOut || '–'} → {entry.lunchIn || '–'}</div>
-                            <div><span className="font-medium">Saída:</span> {entry.exit}</div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center font-bold">
-                        {entry.isAbsence ? '–' : formatHoursMinutes(entry.workedHours)}
-                      </td>
-                      <td className={`px-6 py-4 text-center font-black ${entry.overtime >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                        {entry.overtime > 0 ? '+' : ''}{formatHoursMinutes(entry.overtime)}
-                      </td>
-                      <td className="px-6 py-4 text-right space-x-2">
-                        <button onClick={() => {
-                          const index = sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
-                          setEditingIndex(index);
-                          setCurrentEntry(entry);
-                        }} className="p-2 rounded-lg text-blue-400 hover:bg-blue-400/10 transition-colors">
-                          <Edit2 size={16}/>
-                        </button>
-                        <button onClick={() => {
-                          const index = sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
-                          deleteEntry(index);
-                        }} className="p-2 rounded-lg text-red-400 hover:bg-red-400/10 transition-colors">
-                          <Trash2 size={16}/>
-                        </button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px]">
+                  <thead className={darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}>
+                    <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-left">Data</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-left">Período</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-center">Horas Trabalhadas</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-center">Saldo</th>
+                      <th className="px-6 py-4 text-xs font-bold uppercase text-right">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {currentMonthEntries.map((entry, i) => (
+                      <tr key={i} className={`border-b ${darkMode ? 'border-gray-700/50 hover:bg-gray-700/50' : 'border-slate-100 hover:bg-slate-50'} ${entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : ''}`}>
+                        <td className="px-6 py-4">
+                          <span className="block font-bold">{new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                          <span className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>{entry.dayOfWeek}</span>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {entry.isAbsence ? (
+                            <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>FALTA / DISPENSA</span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <div><span className="font-medium">Entrada:</span> {entry.entry}</div>
+                              <div><span className="font-medium">Almoço:</span> {entry.lunchOut || '–'} → {entry.lunchIn || '–'}</div>
+                              <div><span className="font-medium">Saída:</span> {entry.exit}</div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center font-bold">
+                          {entry.isAbsence ? '–' : formatHoursMinutes(entry.workedHours)}
+                        </td>
+                        <td className={`px-6 py-4 text-center font-black ${entry.overtime >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                          {entry.overtime > 0 ? '+' : ''}{formatHoursMinutes(entry.overtime)}
+                        </td>
+                        <td className="px-6 py-4 text-right space-x-2">
+                          <button onClick={() => {
+                            const index = sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
+                            setEditingIndex(index);
+                            setCurrentEntry(entry);
+                          }} aria-label={`Editar registro de ${new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+                            className="p-2 rounded-lg text-blue-400 hover:bg-blue-400/10 transition-colors">
+                            <Edit2 size={16}/>
+                          </button>
+                          <button onClick={() => {
+                            const index = sortedEntries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
+                            deleteEntry(index);
+                          }} aria-label={`Excluir registro de ${new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+                            className="p-2 rounded-lg text-red-400 hover:bg-red-400/10 transition-colors">
+                            <Trash2 size={16}/>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </>
@@ -855,8 +888,8 @@ const TimesheetControl = () => {
           <h3 className="text-lg font-bold mb-3">Exportar Relatório Mensal (CSV)</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
-              <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Selecione o mês</label>
-              <input type="month"
+              <label htmlFor="report-month" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Selecione o mês</label>
+              <input id="report-month" type="month"
                 className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`}
                 value={reportMonth}
                 onChange={e => setReportMonth(e.target.value)} />
@@ -893,9 +926,15 @@ const TimesheetControl = () => {
         </div>
 
         <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-lg font-bold">Registros Completos ({entries.length})</h3>
+          <div className="flex flex-col md:flex-row justify-between md:items-center gap-3 mb-3">
+            <h3 className="text-lg font-bold">Registros Completos ({filteredReportEntries.length}{filteredReportEntries.length !== entries.length ? ` de ${entries.length}` : ''})</h3>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>Do mais recente ao mais antigo</p>
+          </div>
+          <div className="mb-3">
+            <label htmlFor="report-search" className="sr-only">Buscar por data</label>
+            <input id="report-search" type="text" placeholder="Buscar por data (ex: 15/03, 2026-03 ou Seg)"
+              value={reportSearch} onChange={e => setReportSearch(e.target.value)}
+              className={`w-full rounded-lg p-2.5 border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-slate-300 placeholder-slate-400'}`} />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -910,11 +949,11 @@ const TimesheetControl = () => {
                 </tr>
               </thead>
               <tbody>
-                {sortedEntries.map((entry, i) => (
+                {filteredReportEntries.map((entry, i) => (
                   <tr key={i} className={`border-b ${darkMode ? 'border-gray-800 hover:bg-gray-700/30' : 'border-slate-100 hover:bg-slate-50'}`}>
                     <td className="py-2 px-3">
                       {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                      <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>{entry.dayOfWeek}</div>
+                      <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>{entry.dayOfWeek}</div>
                     </td>
                     <td className="py-2 px-3">{entry.entry || '–'}</td>
                     <td className="py-2 px-3">
@@ -930,13 +969,15 @@ const TimesheetControl = () => {
                         setEditingIndex(index);
                         setCurrentEntry(entry);
                         setCurrentPage('home');
-                      }} className={`p-1.5 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-500 hover:bg-slate-100'}`}>
+                      }} aria-label={`Editar registro de ${new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+                        className={`p-1.5 rounded ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-500 hover:bg-slate-100'}`}>
                         <Edit2 size={14} />
                       </button>
                       <button onClick={() => {
                         const index = entries.findIndex(e => e.date === entry.date && e.entry === entry.entry);
                         if (window.confirm(`Deseja excluir o registro de ${new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}?`)) deleteEntry(index);
-                      }} className={`p-1.5 rounded ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-500 hover:bg-slate-100'}`}>
+                      }} aria-label={`Excluir registro de ${new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+                        className={`p-1.5 rounded ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-500 hover:bg-slate-100'}`}>
                         <Trash2 size={14} />
                       </button>
                     </td>
@@ -944,8 +985,10 @@ const TimesheetControl = () => {
                 ))}
               </tbody>
             </table>
-            {entries.length === 0 && (
-              <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>Nenhum registro encontrado</p>
+            {filteredReportEntries.length === 0 && (
+              <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                {entries.length === 0 ? 'Nenhum registro encontrado' : `Nenhum registro corresponde a "${reportSearch}"`}
+              </p>
             )}
           </div>
         </div>
@@ -968,7 +1011,7 @@ const TimesheetControl = () => {
       <div className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'} border-r`}>
         <div className={`flex items-center justify-between p-6 border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
           <h2 className="text-xl font-bold">Menu</h2>
-          <button onClick={() => setSidebarOpen(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100'}`}>
+          <button onClick={() => setSidebarOpen(false)} aria-label="Fechar menu" className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100'}`}>
             <ChevronLeft size={20} />
           </button>
         </div>
@@ -1004,22 +1047,22 @@ const TimesheetControl = () => {
             <Calculator className={darkMode ? "text-blue-400" : "text-blue-600"} size={22} />
             <h2 className="text-lg font-bold">Calculadoras</h2>
           </div>
-          <button onClick={() => setCalculatorOpen(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100'}`}>
+          <button onClick={() => setCalculatorOpen(false)} aria-label="Fechar calculadoras" className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100'}`}>
             <ChevronRight size={20} />
           </button>
         </div>
 
-        <div className={`flex border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
-          <button onClick={() => setCalcTab('sum')}
+        <div role="tablist" className={`flex border-b ${darkMode ? 'border-gray-700' : 'border-slate-200'}`}>
+          <button role="tab" aria-selected={calcTab === 'sum'} onClick={() => setCalcTab('sum')}
             className={`flex-1 py-3 text-sm font-bold ${calcTab === 'sum'
               ? (darkMode ? 'text-blue-400 border-b-2 border-blue-400' : 'text-blue-600 border-b-2 border-blue-600')
-              : (darkMode ? 'text-gray-500' : 'text-slate-400')}`}>
+              : (darkMode ? 'text-gray-400' : 'text-slate-400')}`}>
             Soma / Subtração
           </button>
-          <button onClick={() => setCalcTab('diff')}
+          <button role="tab" aria-selected={calcTab === 'diff'} onClick={() => setCalcTab('diff')}
             className={`flex-1 py-3 text-sm font-bold ${calcTab === 'diff'
               ? (darkMode ? 'text-blue-400 border-b-2 border-blue-400' : 'text-blue-600 border-b-2 border-blue-600')
-              : (darkMode ? 'text-gray-500' : 'text-slate-400')}`}>
+              : (darkMode ? 'text-gray-400' : 'text-slate-400')}`}>
             Diferença entre Horários
           </button>
         </div>
@@ -1034,22 +1077,23 @@ const TimesheetControl = () => {
                 {calcRows.map((row, i) => (
                   <div key={i} className="flex items-center gap-2">
                     {i === 0 ? (
-                      <span className={`w-9 text-center text-sm font-bold ${darkMode ? 'text-gray-500' : 'text-slate-400'}`}>&nbsp;</span>
+                      <span className={`w-9 text-center text-sm font-bold ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>&nbsp;</span>
                     ) : (
                       <button type="button"
                         onClick={() => updateCalcRow(i, 'op', row.op === '+' ? '-' : '+')}
+                        aria-label={row.op === '-' ? 'Trocar para somar este horário' : 'Trocar para subtrair este horário'}
                         className={`w-9 h-9 flex-shrink-0 rounded-lg font-bold flex items-center justify-center ${row.op === '-'
                           ? (darkMode ? 'bg-red-900/40 text-red-400' : 'bg-red-50 text-red-600')
                           : (darkMode ? 'bg-emerald-900/40 text-emerald-400' : 'bg-emerald-50 text-emerald-600')}`}>
                         {row.op === '-' ? <Minus size={16} /> : <Plus size={16} />}
                       </button>
                     )}
-                    <input type="time" value={row.time}
+                    <input type="time" value={row.time} aria-label={`Horário ${i + 1}${i > 0 ? (row.op === '-' ? ' (subtrair)' : ' (somar)') : ''}`}
                       onChange={e => updateCalcRow(i, 'time', e.target.value)}
                       className={`flex-1 rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
                     {calcRows.length > 1 && (
-                      <button type="button" onClick={() => removeCalcRow(i)}
-                        className={`p-2 rounded-lg ${darkMode ? 'text-gray-500 hover:bg-gray-700' : 'text-slate-400 hover:bg-slate-100'}`}>
+                      <button type="button" onClick={() => removeCalcRow(i)} aria-label={`Remover horário ${i + 1}`}
+                        className={`p-2 rounded-lg ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-slate-400 hover:bg-slate-100'}`}>
                         <X size={16} />
                       </button>
                     )}
@@ -1079,13 +1123,13 @@ const TimesheetControl = () => {
                 Informe o horário inicial e final para calcular a duração entre eles. Se o final for menor que o inicial, considera que passou da meia-noite.
               </p>
               <div>
-                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horário inicial</label>
-                <input type="time" value={diffStart} onChange={e => setDiffStart(e.target.value)}
+                <label htmlFor="diff-start" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horário inicial</label>
+                <input id="diff-start" type="time" value={diffStart} onChange={e => setDiffStart(e.target.value)}
                   className={`w-full rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
               </div>
               <div>
-                <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horário final</label>
-                <input type="time" value={diffEnd} onChange={e => setDiffEnd(e.target.value)}
+                <label htmlFor="diff-end" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horário final</label>
+                <input id="diff-end" type="time" value={diffEnd} onChange={e => setDiffEnd(e.target.value)}
                   className={`w-full rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
@@ -1105,34 +1149,36 @@ const TimesheetControl = () => {
 
           {/* HEADER */}
           <div className={`p-6 rounded-2xl shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'} flex flex-col md:flex-row justify-between items-center gap-4`}>
-            <div className="flex items-center gap-4">
-              <button onClick={() => setSidebarOpen(true)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100'}`}>
+            <div className="flex items-center gap-4 min-w-0 w-full md:w-auto">
+              <button onClick={() => setSidebarOpen(true)} aria-label="Abrir menu" className={`flex-shrink-0 p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-100'}`}>
                 <Menu size={24} />
               </button>
-              <div className={`p-3 rounded-xl text-white ${darkMode ? 'bg-blue-600' : 'bg-indigo-600'}`}>
+              <div className={`flex-shrink-0 p-3 rounded-xl text-white ${darkMode ? 'bg-blue-600' : 'bg-indigo-600'}`}>
                 <Calendar size={28} />
               </div>
-              <div>
-                <h1 className="text-2xl font-black">Controle de Ponto</h1>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-black truncate">Controle de Ponto</h1>
+                <p className={`text-sm truncate ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
                   {currentPage === 'home' ? `Mês atual · ${entries.length} registro${entries.length !== 1 ? 's' : ''} no total` : 'Relatórios completos'} · Sincronizado
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center flex-wrap justify-center gap-3">
               <span className={`hidden sm:block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>
                 Olá, {displayName}
               </span>
-              <button onClick={() => setDarkMode(!darkMode)} className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300' : 'bg-slate-200 text-gray-700'}`}>
+              <button onClick={() => setDarkMode(!darkMode)} aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'} className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300' : 'bg-slate-200 text-gray-700'}`}>
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
-              <button onClick={() => window.location.reload()} className={`p-2 rounded-full ${darkMode ? 'text-gray-300' : 'text-slate-400'}`}>
+              <button onClick={() => window.location.reload()} aria-label="Atualizar página" className={`p-2 rounded-full ${darkMode ? 'text-gray-300' : 'text-slate-400'}`}>
                 <RefreshCw size={20}/>
               </button>
-              <button onClick={() => { if(window.confirm('Limpar todos os registros?')) setEntries([]); }} className="p-2 rounded-full text-red-400">
+              <button onClick={() => { if(window.confirm('Isso vai apagar PERMANENTEMENTE todos os registros de ponto salvos nesta conta. Essa ação não pode ser desfeita. Deseja continuar?')) setEntries([]); }}
+                aria-label="Excluir todos os registros" title="Excluir todos os registros"
+                className={`p-2 rounded-full text-red-400 ${darkMode ? 'hover:bg-red-900/30' : 'hover:bg-red-50'}`}>
                 <Trash2 size={20}/>
               </button>
-              <button onClick={handleSignOut} title="Sair" className={`p-2 rounded-full ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <button onClick={handleSignOut} aria-label="Sair" title="Sair" className={`p-2 rounded-full ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-slate-500 hover:bg-slate-100'}`}>
                 <LogOut size={20}/>
               </button>
             </div>
