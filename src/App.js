@@ -76,6 +76,13 @@ const isNationalHoliday = (dateStr) => {
   return holidayCache[year].has(dateStr);
 };
 
+// Horas esperadas para uma data: 0 em fim de semana e feriado nacional,
+// 8h na sexta, 9h nos demais dias úteis.
+const getExpectedHoursForDay = (dateStr) => {
+  const day = new Date(dateStr + 'T12:00:00').getDay();
+  if (day === 0 || day === 6 || isNationalHoliday(dateStr)) return 0;
+  return day === 5 ? 8 : 9;
+};
 
 const TimesheetControl = () => {
   const [entries, setEntries] = useState([]);
@@ -323,8 +330,7 @@ const TimesheetControl = () => {
     if (!currentEntry.date) { alert('Selecione uma data'); return; }
 
     const day = new Date(currentEntry.date + 'T12:00:00').getDay();
-    const isHoliday = isNationalHoliday(currentEntry.date);
-    const expected = (day === 0 || day === 6 || isHoliday) ? 0 : (day === 5 ? 8 : 9);
+    const expected = getExpectedHoursForDay(currentEntry.date);
 
     let worked = 0;
     if (!currentEntry.isAbsence && currentEntry.entry && currentEntry.exit) {
@@ -444,6 +450,16 @@ const TimesheetControl = () => {
 
     const autoCompensated = Math.max(0, totals.overtime);
 
+    const getWeekExpectedHours = (monday) => {
+      let total = 0;
+      for (let i = 0; i < 5; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        total += getExpectedHoursForDay(toISODate(d));
+      }
+      return total;
+    };
+
     const { monday: cM, friday: cF } = getCurrentWeekDates();
     const currentWeekHours = entries
       .filter(e => {
@@ -453,6 +469,7 @@ const TimesheetControl = () => {
         return d >= cM && d <= cF;
       })
       .reduce((sum, e) => sum + e.workedHours, 0);
+    const currentWeekExpectedHours = getWeekExpectedHours(cM);
 
     const { monday: pM, friday: pF } = getPreviousWeekDates();
     const previousWeekHours = entries
@@ -463,8 +480,9 @@ const TimesheetControl = () => {
         return d.getTime() >= pM.getTime() && d.getTime() <= pF.getTime();
       })
       .reduce((sum, e) => sum + e.workedHours, 0);
+    const previousWeekExpectedHours = getWeekExpectedHours(pM);
 
-    return { ...totals, autoCompensated, currentWeekHours, previousWeekHours };
+    return { ...totals, autoCompensated, currentWeekHours, previousWeekHours, currentWeekExpectedHours, previousWeekExpectedHours };
   }, [entries, getCurrentWeekDates, getPreviousWeekDates]);
 
   const handleSignIn = async () => {
@@ -732,14 +750,16 @@ const TimesheetControl = () => {
                 </span>
               </div>
               <p className="text-5xl font-black mb-1">{formatHoursMinutes(summary.currentWeekHours || 0)}</p>
-              <p className="text-sm opacity-90 mb-4">de 44h semanais (seg a sex)</p>
+              <p className="text-sm opacity-90 mb-4">
+                de {summary.currentWeekExpectedHours}h semanais (seg a sex){summary.currentWeekExpectedHours < 44 && ' · desconta feriado'}
+              </p>
               <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-blue-950/50' : 'bg-blue-700/30'}`}>
                 <div className="h-full bg-white/80 transition-all duration-500"
-                  style={{ width: `${Math.min((summary.currentWeekHours / 44) * 100, 100)}%` }}></div>
+                  style={{ width: `${Math.min((summary.currentWeekHours / (summary.currentWeekExpectedHours || 1)) * 100, 100)}%` }}></div>
               </div>
               <p className="text-xs opacity-70 mt-2">
-                {Math.min((summary.currentWeekHours / 44) * 100, 100).toFixed(1)}% da meta semanal
-                {summary.currentWeekHours > 44 && ' · ⚡ Meta batida!'}
+                {Math.min((summary.currentWeekHours / (summary.currentWeekExpectedHours || 1)) * 100, 100).toFixed(1)}% da meta semanal
+                {summary.currentWeekHours >= summary.currentWeekExpectedHours && summary.currentWeekExpectedHours > 0 && ' · ⚡ Meta batida!'}
               </p>
             </div>
 
@@ -753,10 +773,12 @@ const TimesheetControl = () => {
                 </span>
               </div>
               <p className="text-2xl font-black">{formatHoursMinutes(summary.previousWeekHours || 0)}</p>
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>de 44h semanais</p>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
+                de {summary.previousWeekExpectedHours}h semanais{summary.previousWeekExpectedHours < 44 && ' · desconta feriado'}
+              </p>
               <div className={`mt-3 h-1.5 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-slate-200'}`}>
                 <div className={`h-full ${darkMode ? 'bg-gray-400' : 'bg-slate-400'} transition-all duration-500`}
-                  style={{ width: `${Math.min((summary.previousWeekHours / 44) * 100, 100)}%` }}></div>
+                  style={{ width: `${Math.min((summary.previousWeekHours / (summary.previousWeekExpectedHours || 1)) * 100, 100)}%` }}></div>
               </div>
             </div>
 
