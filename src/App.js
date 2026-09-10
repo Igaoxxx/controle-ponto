@@ -18,6 +18,65 @@ const applyTolerance = (timeStr, referenceMinutes, toleranceMinutes = 5) => {
   return actual; // fora da tolerância → usa o horário real
 };
 
+// ─── Feriados nacionais (Brasil) ───────────────────────────────────────────
+// Calcula o domingo de Páscoa de um ano (algoritmo de Meeus/Jones/Butcher),
+// usado para derivar a Sexta-feira Santa, que é feriado nacional móvel.
+const getEasterSunday = (year) => {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+};
+
+const toISODate = (date) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+// Feriados nacionais fixados em lei federal. Não inclui pontos facultativos
+// como Carnaval e Corpus Christi, que não são feriados obrigatórios em todo
+// o país (variam por decreto/município).
+const getBrazilianHolidays = (year) => {
+  const fixed = [
+    `${year}-01-01`, // Confraternização Universal
+    `${year}-04-21`, // Tiradentes
+    `${year}-05-01`, // Dia do Trabalho
+    `${year}-09-07`, // Independência do Brasil
+    `${year}-10-12`, // Nossa Senhora Aparecida
+    `${year}-11-02`, // Finados
+    `${year}-11-15`, // Proclamação da República
+    `${year}-12-25`, // Natal
+  ];
+  if (year >= 2024) fixed.push(`${year}-11-20`); // Consciência Negra (Lei 14.759/2023)
+
+  const easter = getEasterSunday(year);
+  const goodFriday = new Date(easter);
+  goodFriday.setDate(easter.getDate() - 2);
+  fixed.push(toISODate(goodFriday)); // Sexta-feira Santa
+
+  return new Set(fixed);
+};
+
+const holidayCache = {};
+const isNationalHoliday = (dateStr) => {
+  if (!dateStr) return false;
+  const year = parseInt(dateStr.slice(0, 4), 10);
+  if (!holidayCache[year]) holidayCache[year] = getBrazilianHolidays(year);
+  return holidayCache[year].has(dateStr);
+};
+
+
 const TimesheetControl = () => {
   const [entries, setEntries] = useState([]);
   const [currentEntry, setCurrentEntry] = useState({
@@ -264,7 +323,8 @@ const TimesheetControl = () => {
     if (!currentEntry.date) { alert('Selecione uma data'); return; }
 
     const day = new Date(currentEntry.date + 'T12:00:00').getDay();
-    const expected = (day === 0 || day === 6) ? 0 : (day === 5 ? 8 : 9);
+    const isHoliday = isNationalHoliday(currentEntry.date);
+    const expected = (day === 0 || day === 6 || isHoliday) ? 0 : (day === 5 ? 8 : 9);
 
     let worked = 0;
     if (!currentEntry.isAbsence && currentEntry.entry && currentEntry.exit) {
@@ -590,6 +650,9 @@ const TimesheetControl = () => {
               <input id="entry-date" type="date" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
                 value={currentEntry.date}
                 onChange={e => setCurrentEntry({...currentEntry, date: e.target.value})} />
+              {isNationalHoliday(currentEntry.date) && (
+                <p className={`text-xs font-bold mt-1 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>🎉 Feriado nacional — não conta como hora esperada</p>
+              )}
             </div>
             {!currentEntry.isAbsence && (
               <>
