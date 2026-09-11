@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 import { Plus, Trash2, Calendar, Save, Edit2, X, Target, RefreshCw, CheckCircle, Moon, Sun, Clock, Menu, Home, FileText, Download, ChevronLeft, Utensils, Info, LogOut, Eraser, Calculator, ChevronRight, Minus } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // ─── CLT §58 §1º: tolerância de 5 minutos por marcação (máx 10min/dia) ────────
 // Se a diferença entre o horário marcado e o horário padrão for ≤ 5min, ela é
@@ -593,16 +595,13 @@ const TimesheetControl = () => {
     return 'bg-blue-500';
   };
 
-  const exportMonthToCSV = () => {
+  const getMonthReportData = () => {
     const [year, month] = reportMonth.split('-');
     const filtered = sortedEntries.filter(e => {
       const d = new Date(e.date + 'T12:00:00');
       return d.getFullYear() === parseInt(year) && (d.getMonth() + 1) === parseInt(month);
     });
 
-    if (filtered.length === 0) { alert('Nenhum registro encontrado para este período'); return; }
-
-    const headers = ['Data','Dia da Semana','Entrada','Saída Almoço','Retorno Almoço','Saída','Horas Trabalhadas','Horas Esperadas','Saldo','Tipo'];
     const rows = filtered.map(e => [
       new Date(e.date + 'T12:00:00').toLocaleDateString('pt-BR'),
       e.dayOfWeek, e.entry || '-', e.lunchOut || '-', e.lunchIn || '-', e.exit || '-',
@@ -617,15 +616,53 @@ const TimesheetControl = () => {
       overtime: acc.overtime + e.overtime
     }), { worked: 0, expected: 0, overtime: 0 });
 
-    rows.push(['','','','','','','','','','']);
-    rows.push(['TOTAIS','','','','','',formatHoursMinutes(totals.worked),formatHoursMinutes(totals.expected),(totals.overtime > 0 ? '+' : '') + formatHoursMinutes(totals.overtime),'']);
+    return { year, month, filtered, rows, totals };
+  };
 
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const monthLabelFor = (year, month) =>
+    new Date(parseInt(year), parseInt(month) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const exportMonthToCSV = () => {
+    const { year, month, filtered, rows, totals } = getMonthReportData();
+    if (filtered.length === 0) { alert('Nenhum registro encontrado para este período'); return; }
+
+    const headers = ['Data','Dia da Semana','Entrada','Saída Almoço','Retorno Almoço','Saída','Horas Trabalhadas','Horas Esperadas','Saldo','Tipo'];
+    const allRows = [...rows];
+    allRows.push(['','','','','','','','','','']);
+    allRows.push(['TOTAIS','','','','','',formatHoursMinutes(totals.worked),formatHoursMinutes(totals.expected),(totals.overtime > 0 ? '+' : '') + formatHoursMinutes(totals.overtime),'']);
+
+    const csv = [headers, ...allRows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `ponto_${year}_${month}.csv`;
     link.click();
+  };
+
+  const exportMonthToPDF = () => {
+    const { year, month, filtered, rows, totals } = getMonthReportData();
+    if (filtered.length === 0) { alert('Nenhum registro encontrado para este período'); return; }
+
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const monthLabel = monthLabelFor(year, month);
+
+    doc.setFontSize(16);
+    doc.text('Controle de Ponto', 14, 16);
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Relatório de ${monthLabel}`, 14, 23);
+
+    autoTable(doc, {
+      startY: 28,
+      head: [['Data', 'Dia', 'Entrada', 'Saída Almoço', 'Retorno Almoço', 'Saída', 'Horas Trabalhadas', 'Horas Esperadas', 'Saldo', 'Tipo']],
+      body: rows,
+      foot: [['TOTAIS', '', '', '', '', '', formatHoursMinutes(totals.worked), formatHoursMinutes(totals.expected), (totals.overtime > 0 ? '+' : '') + formatHoursMinutes(totals.overtime), '']],
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [37, 99, 235] },
+      footStyles: { fillColor: [241, 245, 249], textColor: 20, fontStyle: 'bold' },
+    });
+
+    doc.save(`ponto_${year}_${month}.pdf`);
   };
 
   // Mês atual formatado para exibição
@@ -970,8 +1007,8 @@ const TimesheetControl = () => {
 
       <div className="space-y-6">
         <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
-          <h3 className="text-lg font-bold mb-3">Exportar Relatório Mensal (CSV)</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <h3 className="text-lg font-bold mb-3">Exportar Relatório Mensal</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="md:col-span-2">
               <label htmlFor="report-month" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Selecione o mês</label>
               <input id="report-month" type="month"
@@ -982,7 +1019,13 @@ const TimesheetControl = () => {
             <div className="flex items-end">
               <button onClick={exportMonthToCSV}
                 className={`w-full p-3 rounded-lg font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-green-700 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700'} text-white transition-colors`}>
-                <Download size={20} /> Exportar CSV
+                <Download size={20} /> CSV
+              </button>
+            </div>
+            <div className="flex items-end">
+              <button onClick={exportMonthToPDF}
+                className={`w-full p-3 rounded-lg font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-red-700 hover:bg-red-600' : 'bg-red-600 hover:bg-red-700'} text-white transition-colors`}>
+                <Download size={20} /> PDF
               </button>
             </div>
           </div>
