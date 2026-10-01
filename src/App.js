@@ -125,10 +125,12 @@ const TimesheetControl = () => {
   }, []);
 
   const [calculatorOpen, setCalculatorOpen] = useState(false);
-  const [calcTab, setCalcTab] = useState('sum'); // 'sum' | 'diff'
+  const [calcTab, setCalcTab] = useState('sum'); // 'sum' | 'diff' | 'multiply'
   const [calcRows, setCalcRows] = useState([{ time: '', op: '+' }, { time: '', op: '+' }]);
   const [diffStart, setDiffStart] = useState('');
   const [diffEnd, setDiffEnd] = useState('');
+  const [multiplyTime, setMultiplyTime] = useState('');
+  const [multiplyFactor, setMultiplyFactor] = useState('');
 
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -252,6 +254,13 @@ const TimesheetControl = () => {
     if (diff < 0) diff += 1440; // assume que passou da meia-noite
     return diff;
   }, [diffStart, diffEnd]);
+
+  const calcMultiplyMinutes = useMemo(() => {
+    if (!multiplyTime || multiplyFactor === '') return null;
+    const factor = parseFloat(multiplyFactor);
+    if (isNaN(factor)) return null;
+    return Math.round(timeToMinutes(multiplyTime) * factor);
+  }, [multiplyTime, multiplyFactor]);
 
   const getDayOfWeek = (d) => {
     const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -1193,6 +1202,12 @@ const TimesheetControl = () => {
               : (darkMode ? 'text-gray-400' : 'text-slate-400')}`}>
             Diferença entre Horários
           </button>
+          <button role="tab" aria-selected={calcTab === 'multiply'} onClick={() => setCalcTab('multiply')}
+            className={`flex-1 py-3 text-sm font-bold ${calcTab === 'multiply'
+              ? (darkMode ? 'text-blue-400 border-b-2 border-blue-400' : 'text-blue-600 border-b-2 border-blue-600')
+              : (darkMode ? 'text-gray-400' : 'text-slate-400')}`}>
+            Multiplicar
+          </button>
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
@@ -1245,7 +1260,7 @@ const TimesheetControl = () => {
                 </p>
               </div>
             </>
-          ) : (
+          ) : calcTab === 'diff' ? (
             <>
               <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
                 Informe o horário inicial e final para calcular a duração entre eles. Se o final for menor que o inicial, considera que passou da meia-noite.
@@ -1264,6 +1279,29 @@ const TimesheetControl = () => {
                 <p className={`text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Duração</p>
                 <p className={`text-3xl font-black ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
                   {calcDiffMinutes === null ? '–' : formatSignedMinutes(calcDiffMinutes)}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                Multiplique um horário por um número — útil pra calcular o total de horas de vários dias com a mesma jornada (ex: 8h48min × 20 dias).
+              </p>
+              <div>
+                <label htmlFor="multiply-time" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Horário</label>
+                <input id="multiply-time" type="time" value={multiplyTime} onChange={e => setMultiplyTime(e.target.value)}
+                  className={`w-full rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+              </div>
+              <div>
+                <label htmlFor="multiply-factor" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Multiplicar por</label>
+                <input id="multiply-factor" type="number" min="0" placeholder="Ex: 20" value={multiplyFactor}
+                  onChange={e => setMultiplyFactor(e.target.value)}
+                  className={`w-full rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+              </div>
+              <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-900/50' : 'bg-slate-50'}`}>
+                <p className={`text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Resultado</p>
+                <p className={`text-3xl font-black ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                  {calcMultiplyMinutes === null ? '–' : formatSignedMinutes(calcMultiplyMinutes)}
                 </p>
               </div>
             </>
