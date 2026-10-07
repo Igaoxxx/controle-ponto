@@ -97,7 +97,7 @@ const TimesheetControl = () => {
     isHalfDay: false,
     isAbsence: false
   });
-  const [suggestedExit, setSuggestedExit] = useState('');
+  const [suggestedExit, setSuggestedExit] = useState({ exact: '', settle: '' });
   const [editingIndex, setEditingIndex] = useState(null);
   const [hoursGoal, setHoursGoal] = useState({ total: 0, deadline: '', hoursPaid: 0 });
   const [darkMode, setDarkMode] = useState(true);
@@ -326,15 +326,28 @@ const TimesheetControl = () => {
     return Math.max(0, totalMinutes / 60);
   };
 
+  const formatClockFromMinutes = (totalMin) => {
+    const norm = ((Math.round(totalMin) % 1440) + 1440) % 1440;
+    const outH = Math.floor(norm / 60);
+    const outM = norm % 60;
+    return `${String(outH).padStart(2, '0')}:${String(outM).padStart(2, '0')}`;
+  };
+
   const handleSuggestedExit = (entry, date) => {
-    if (!entry) { setSuggestedExit(''); return; }
+    if (!entry) { setSuggestedExit({ exact: '', settle: '' }); return; }
     const [h, m] = entry.split(':').map(Number);
-    const day = new Date(date + 'T12:00:00').getDay();
-    const needed = (day === 5) ? 8 : 9;
-    const exitMin = (h * 60 + m) + (needed * 60) + 60;
-    const outH = Math.floor(exitMin / 60) % 24;
-    const outM = exitMin % 60;
-    setSuggestedExit(`${String(outH).padStart(2, '0')}:${String(outM).padStart(2, '0')}`);
+    const needed = getExpectedHoursForDay(date);
+    const exactMin = (h * 60 + m) + (needed * 60) + 60; // +1h de almoço padrão
+
+    // Saldo acumulado até agora (sem contar o registro de hoje, que ainda não
+    // foi lançado): positivo = crédito de horas extras, negativo = débito.
+    const overtimeMin = Math.round((summary.overtime || 0) * 60);
+    const settleMin = exactMin - overtimeMin;
+
+    setSuggestedExit({
+      exact: formatClockFromMinutes(exactMin),
+      settle: overtimeMin !== 0 ? formatClockFromMinutes(settleMin) : '',
+    });
   };
 
   const addEntry = () => {
@@ -389,7 +402,7 @@ const TimesheetControl = () => {
       entry: '', lunchOut: '', lunchIn: '', exit: '',
       isHalfDay: false, isAbsence: false
     });
-    setSuggestedExit('');
+    setSuggestedExit({ exact: '', settle: '' });
   };
 
   const deleteEntry = (i) => {
@@ -749,7 +762,16 @@ const TimesheetControl = () => {
                   <input id="exit-time" type="time" className={`w-full rounded-lg p-3 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'}`}
                     value={currentEntry.exit}
                     onChange={e => setCurrentEntry({...currentEntry, exit: e.target.value})} />
-                  {suggestedExit && <p className={`text-xs font-bold mt-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Sugestão: {suggestedExit}</p>}
+                  {suggestedExit.exact && (
+                    <p className={`text-xs font-bold mt-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                      Cumprir jornada do dia: {suggestedExit.exact}
+                    </p>
+                  )}
+                  {suggestedExit.settle && (
+                    <p className={`text-xs font-bold mt-0.5 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                      Quitar saldo acumulado ({summary.overtime > 0 ? 'crédito' : 'débito'}): {suggestedExit.settle}
+                    </p>
+                  )}
                 </div>
               </>
             )}
