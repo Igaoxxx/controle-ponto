@@ -79,11 +79,11 @@ const isNationalHoliday = (dateStr) => {
 };
 
 // Horas esperadas para uma data: 0 em fim de semana e feriado nacional,
-// 8h na sexta, 9h nos demais dias úteis.
+// 8h nos demais dias úteis (jornada de 40h semanais).
 const getExpectedHoursForDay = (dateStr) => {
   const day = new Date(dateStr + 'T12:00:00').getDay();
   if (day === 0 || day === 6 || isNationalHoliday(dateStr)) return 0;
-  return day === 5 ? 8 : 9;
+  return 8;
 };
 
 const TimesheetControl = () => {
@@ -268,11 +268,11 @@ const TimesheetControl = () => {
   };
 
   // Horário padrão esperado por dia da semana (em minutos desde meia-noite)
-  // Sexta: 8h, demais dias úteis: 9h
+  // Jornada de 40h semanais: 8h por dia útil.
   // Para a tolerância CLT precisamos do horário "nominal" de entrada/saída.
   // Como o app não tem horário contratado fixo, usamos a própria marcação como
   // referência — mas descontamos variações ≤5min nas bordas de almoço.
-  const calculateHours = (entry, lunchOut, lunchIn, exit, dayOfWeek) => {
+  const calculateHours = (entry, lunchOut, lunchIn, exit) => {
     if (!entry || !exit) return 0;
 
     const toMin = (t) => {
@@ -306,9 +306,9 @@ const TimesheetControl = () => {
     }
 
     // Tolerância CLT na entrada e saída:
-    // Determina o horário "esperado" com base nas horas da jornada
-    // (sexta = 8h, demais = 9h), usando a própria entrada como âncora.
-    const expectedWorkHours = dayOfWeek === 5 ? 8 : 9;
+    // Determina o horário "esperado" com base na jornada diária (8h, de
+    // uma semana de 40h), usando a própria entrada como âncora.
+    const expectedWorkHours = 8;
     const lunchDuration = (lunchOut && lunchIn)
       ? (toMin(lunchIn) - toMin(lunchOut))
       : 60;
@@ -353,7 +353,6 @@ const TimesheetControl = () => {
   const addEntry = () => {
     if (!currentEntry.date) { alert('Selecione uma data'); return; }
 
-    const day = new Date(currentEntry.date + 'T12:00:00').getDay();
     const expected = getExpectedHoursForDay(currentEntry.date);
 
     let worked = 0;
@@ -362,8 +361,7 @@ const TimesheetControl = () => {
         currentEntry.entry,
         currentEntry.lunchOut,
         currentEntry.lunchIn,
-        currentEntry.exit,
-        day
+        currentEntry.exit
       );
       if (currentEntry.isHalfDay) worked = worked / 2;
     }
@@ -819,7 +817,7 @@ const TimesheetControl = () => {
               </div>
               <p className="text-5xl font-black mb-1">{formatHoursMinutes(summary.currentWeekHours || 0)}</p>
               <p className="text-sm opacity-90 mb-4">
-                de {summary.currentWeekExpectedHours}h semanais (seg a sex){summary.currentWeekExpectedHours < 44 && ' · desconta feriado'}
+                de {summary.currentWeekExpectedHours}h semanais (seg a sex){summary.currentWeekExpectedHours < 40 && ' · desconta feriado'}
               </p>
               <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-blue-950/50' : 'bg-blue-700/30'}`}>
                 <div className="h-full bg-white/80 transition-all duration-500"
@@ -842,7 +840,7 @@ const TimesheetControl = () => {
               </div>
               <p className="text-2xl font-black">{formatHoursMinutes(summary.previousWeekHours || 0)}</p>
               <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>
-                de {summary.previousWeekExpectedHours}h semanais{summary.previousWeekExpectedHours < 44 && ' · desconta feriado'}
+                de {summary.previousWeekExpectedHours}h semanais{summary.previousWeekExpectedHours < 40 && ' · desconta feriado'}
               </p>
               <div className={`mt-3 h-1.5 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-slate-200'}`}>
                 <div className={`h-full ${darkMode ? 'bg-gray-400' : 'bg-slate-400'} transition-all duration-500`}
