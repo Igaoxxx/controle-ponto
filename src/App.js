@@ -112,7 +112,8 @@ const TimesheetControl = () => {
     lunchIn: '',
     exit: '',
     isHalfDay: false,
-    isAbsence: false
+    isAbsence: false,
+    isDayOff: false
   });
   const [suggestedExit, setSuggestedExit] = useState({ exact: '', settle: '' });
   const [editingIndex, setEditingIndex] = useState(null);
@@ -372,10 +373,11 @@ const TimesheetControl = () => {
   const addEntry = () => {
     if (!currentEntry.date) { alert('Selecione uma data'); return; }
 
-    const expected = getExpectedHoursForDay(currentEntry.date);
+    // Day-off não é cobrado: nem horas trabalhadas, nem horas esperadas.
+    const expected = currentEntry.isDayOff ? 0 : getExpectedHoursForDay(currentEntry.date);
 
     let worked = 0;
-    if (!currentEntry.isAbsence && currentEntry.entry && currentEntry.exit) {
+    if (!currentEntry.isAbsence && !currentEntry.isDayOff && currentEntry.entry && currentEntry.exit) {
       worked = calculateHours(
         currentEntry.entry,
         currentEntry.lunchOut,
@@ -417,7 +419,7 @@ const TimesheetControl = () => {
     setCurrentEntry({
       date: new Date().toISOString().split('T')[0],
       entry: '', lunchOut: '', lunchIn: '', exit: '',
-      isHalfDay: false, isAbsence: false
+      isHalfDay: false, isAbsence: false, isDayOff: false
     });
     setSuggestedExit({ exact: '', settle: '' });
   };
@@ -646,7 +648,7 @@ const TimesheetControl = () => {
       e.dayOfWeek, e.entry || '-', e.lunchOut || '-', e.lunchIn || '-', e.exit || '-',
       formatHoursMinutes(e.workedHours), formatHoursMinutes(e.expectedHours),
       (e.overtime > 0 ? '+' : '') + formatHoursMinutes(e.overtime),
-      e.isAbsence ? 'Falta/Dispensa' : e.isHalfDay ? 'Meio Período' : 'Completo'
+      e.isDayOff ? 'Day-Off' : e.isAbsence ? 'Falta/Dispensa' : e.isHalfDay ? 'Meio Período' : 'Completo'
     ]);
 
     const totals = filtered.reduce((acc, e) => ({
@@ -748,7 +750,7 @@ const TimesheetControl = () => {
                 <p className={`text-xs font-bold mt-1 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>🎉 Feriado nacional — não conta como hora esperada</p>
               )}
             </div>
-            {!currentEntry.isAbsence && (
+            {!currentEntry.isAbsence && !currentEntry.isDayOff && (
               <>
                 <div>
                   <label htmlFor="entry-time" className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>Entrada</label>
@@ -798,7 +800,7 @@ const TimesheetControl = () => {
                 {editingIndex !== null ? 'Atualizar' : 'Lançar'}
               </button>
               {editingIndex !== null && (
-                <button onClick={() => { setEditingIndex(null); setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', lunchOut: '', lunchIn: '', exit: '', isHalfDay: false, isAbsence: false }); }}
+                <button onClick={() => { setEditingIndex(null); setCurrentEntry({ date: new Date().toISOString().split('T')[0], entry: '', lunchOut: '', lunchIn: '', exit: '', isHalfDay: false, isAbsence: false, isDayOff: false }); }}
                   aria-label="Cancelar edição" className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-slate-100'}`}>
                   <X size={20}/>
                 </button>
@@ -813,8 +815,13 @@ const TimesheetControl = () => {
             </label>
             <label className="flex items-center gap-2 cursor-pointer text-red-400">
               <input type="checkbox" className="w-4 h-4 rounded" checked={currentEntry.isAbsence}
-                onChange={e => setCurrentEntry({...currentEntry, isAbsence: e.target.checked})} />
+                onChange={e => setCurrentEntry({...currentEntry, isAbsence: e.target.checked, isDayOff: e.target.checked ? false : currentEntry.isDayOff})} />
               Falta / Dispensa
+            </label>
+            <label className={`flex items-center gap-2 cursor-pointer ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+              <input type="checkbox" className="w-4 h-4 rounded" checked={currentEntry.isDayOff}
+                onChange={e => setCurrentEntry({...currentEntry, isDayOff: e.target.checked, isAbsence: e.target.checked ? false : currentEntry.isAbsence})} />
+              Day-Off 🎂
             </label>
           </div>
         </div>
@@ -990,7 +997,7 @@ const TimesheetControl = () => {
                   </thead>
                   <tbody>
                     {currentMonthEntries.map((entry, i) => (
-                      <tr key={i} className={`border-b ${darkMode ? 'border-gray-700/50 hover:bg-gray-700/50' : 'border-slate-100 hover:bg-slate-50'} ${entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : ''}`}>
+                      <tr key={i} className={`border-b ${darkMode ? 'border-gray-700/50 hover:bg-gray-700/50' : 'border-slate-100 hover:bg-slate-50'} ${entry.isAbsence ? (darkMode ? 'bg-red-900/20' : 'bg-red-50/30') : entry.isDayOff ? (darkMode ? 'bg-purple-900/20' : 'bg-purple-50/30') : ''}`}>
                         <td className="px-6 py-4">
                           <span className="block font-bold">{new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                           <span className={`text-xs font-bold uppercase ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>{entry.dayOfWeek}</span>
@@ -998,6 +1005,8 @@ const TimesheetControl = () => {
                         <td className="px-6 py-4 text-sm">
                           {entry.isAbsence ? (
                             <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>FALTA / DISPENSA</span>
+                          ) : entry.isDayOff ? (
+                            <span className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>DAY-OFF 🎂</span>
                           ) : (
                             <div className="space-y-0.5">
                               <div><span className="font-medium">Entrada:</span> {entry.entry}</div>
@@ -1007,7 +1016,7 @@ const TimesheetControl = () => {
                           )}
                         </td>
                         <td className="px-6 py-4 text-center font-bold">
-                          {entry.isAbsence ? '–' : formatHoursMinutes(entry.workedHours)}
+                          {entry.isAbsence || entry.isDayOff ? '–' : formatHoursMinutes(entry.workedHours)}
                         </td>
                         <td className={`px-6 py-4 text-center font-black ${entry.overtime >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                           {entry.overtime > 0 ? '+' : ''}{formatHoursMinutes(entry.overtime)}
