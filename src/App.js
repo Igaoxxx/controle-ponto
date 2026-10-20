@@ -78,18 +78,22 @@ const isNationalHoliday = (dateStr) => {
   return holidayCache[year].has(dateStr);
 };
 
-// Horas esperadas para uma data: 0 em fim de semana e feriado nacional,
-// 8h nos demais dias úteis (jornada de 40h semanais).
+// Data em que a jornada de 40h semanais passou a valer (dia 08/10/2026 e
+// anteriores seguem a regra antiga de 44h). O "Saldo Acumulado" também só
+// soma horas extras/déficit a partir desta data — registros anteriores
+// (lançados sob a jornada antiga) não entram nessa conta.
+const WORK_SCHEDULE_40H_START_DATE = '2026-10-09';
+
+// Horas esperadas para uma data: 0 em fim de semana e feriado nacional. Nos
+// demais dias úteis, segue a regra vigente na própria data: 8h fixas a
+// partir de WORK_SCHEDULE_40H_START_DATE (jornada de 40h semanais), ou 9h de
+// segunda a quinta e 8h na sexta antes disso (jornada antiga de 44h).
 const getExpectedHoursForDay = (dateStr) => {
   const day = new Date(dateStr + 'T12:00:00').getDay();
   if (day === 0 || day === 6 || isNationalHoliday(dateStr)) return 0;
+  if (dateStr < WORK_SCHEDULE_40H_START_DATE) return day === 5 ? 8 : 9;
   return 8;
 };
-
-// Data em que a jornada de 40h semanais passou a valer. O "Saldo Acumulado"
-// só soma horas extras/déficit a partir desta data — registros anteriores
-// (lançados sob a jornada antiga de 44h) não entram nessa conta.
-const SALDO_ACUMULADO_START_DATE = '2026-10-09';
 
 // Registros lançados antes da virada de código acima ficaram com
 // expectedHours/overtime calculados pela jornada antiga (9h seg-qui, 8h
@@ -97,7 +101,7 @@ const SALDO_ACUMULADO_START_DATE = '2026-10-09';
 // isso recalculando a hora esperada e o saldo de cada registro >= 09/10/2026
 // com a regra atual — registros anteriores a essa data ficam como estavam.
 const normalizeEntry = (e) => {
-  if (e.date < SALDO_ACUMULADO_START_DATE) return e;
+  if (e.date < WORK_SCHEDULE_40H_START_DATE) return e;
   const expectedHours = getExpectedHoursForDay(e.date);
   if (e.expectedHours === expectedHours) return e;
   return { ...e, expectedHours, overtime: (e.workedHours || 0) - expectedHours };
@@ -488,7 +492,7 @@ const TimesheetControl = () => {
   const summary = useMemo(() => {
     const totals = entries.reduce((acc, e) => ({
       worked: acc.worked + e.workedHours,
-      overtime: acc.overtime + (e.date >= SALDO_ACUMULADO_START_DATE ? e.overtime : 0)
+      overtime: acc.overtime + (e.date >= WORK_SCHEDULE_40H_START_DATE ? e.overtime : 0)
     }), { worked: 0, overtime: 0 });
 
     const autoCompensated = Math.max(0, totals.overtime);
@@ -575,7 +579,7 @@ const TimesheetControl = () => {
 
   const handleResetAccumulatedBalance = () => {
     if (window.confirm('Isso vai zerar o saldo acumulado (horas extras ou em débito) de todos os registros a partir de 09/10/2026. Os registros de ponto não serão apagados, apenas o saldo. Essa ação não pode ser desfeita. Deseja continuar?')) {
-      setEntries(entries.map(e => e.date >= SALDO_ACUMULADO_START_DATE ? { ...e, overtime: 0 } : e));
+      setEntries(entries.map(e => e.date >= WORK_SCHEDULE_40H_START_DATE ? { ...e, overtime: 0 } : e));
     }
   };
 
