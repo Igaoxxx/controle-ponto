@@ -143,7 +143,7 @@ const TimesheetControl = () => {
 
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [calcTab, setCalcTab] = useState('sum'); // 'sum' | 'diff' | 'multiply'
-  const [calcRows, setCalcRows] = useState([{ time: '', op: '+' }, { time: '', op: '+' }]);
+  const [calcRows, setCalcRows] = useState([{ hours: '', minutes: '', op: '+' }, { hours: '', minutes: '', op: '+' }]);
   const [diffStart, setDiffStart] = useState('');
   const [diffEnd, setDiffEnd] = useState('');
   const [multiplyTime, setMultiplyTime] = useState('');
@@ -252,18 +252,20 @@ const TimesheetControl = () => {
     return `${neg ? '-' : ''}${h}h${String(m).padStart(2, '0')}m`;
   };
 
+  const calcRowToMinutes = (row) => (parseInt(row.hours, 10) || 0) * 60 + (parseInt(row.minutes, 10) || 0);
+
   const calcSumMinutes = useMemo(() => {
     return calcRows.reduce((acc, row, i) => {
-      const mins = timeToMinutes(row.time);
+      const mins = calcRowToMinutes(row);
       if (i === 0) return mins;
       return row.op === '-' ? acc - mins : acc + mins;
     }, 0);
   }, [calcRows]);
 
-  const addCalcRow = () => setCalcRows([...calcRows, { time: '', op: '+' }]);
+  const addCalcRow = () => setCalcRows([...calcRows, { hours: '', minutes: '', op: '+' }]);
   const removeCalcRow = (i) => setCalcRows(calcRows.filter((_, idx) => idx !== i));
   const updateCalcRow = (i, field, value) => setCalcRows(calcRows.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
-  const resetCalcRows = () => setCalcRows([{ time: '', op: '+' }, { time: '', op: '+' }]);
+  const resetCalcRows = () => setCalcRows([{ hours: '', minutes: '', op: '+' }, { hours: '', minutes: '', op: '+' }]);
 
   const calcDiffMinutes = useMemo(() => {
     if (!diffStart || !diffEnd) return null;
@@ -1251,7 +1253,7 @@ const TimesheetControl = () => {
           {calcTab === 'sum' ? (
             <>
               <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                Some ou subtraia vários horários (formato HH:MM) e veja o total.
+                Some ou subtraia várias durações em horas e minutos — aceita qualquer quantidade de horas (ex: 28h − 2h41min).
               </p>
               <div className="space-y-2">
                 {calcRows.map((row, i) => (
@@ -1261,18 +1263,32 @@ const TimesheetControl = () => {
                     ) : (
                       <button type="button"
                         onClick={() => updateCalcRow(i, 'op', row.op === '+' ? '-' : '+')}
-                        aria-label={row.op === '-' ? 'Trocar para somar este horário' : 'Trocar para subtrair este horário'}
+                        aria-label={row.op === '-' ? 'Trocar para somar esta duração' : 'Trocar para subtrair esta duração'}
                         className={`w-9 h-9 flex-shrink-0 rounded-lg font-bold flex items-center justify-center ${row.op === '-'
                           ? (darkMode ? 'bg-red-900/40 text-red-400' : 'bg-red-50 text-red-600')
                           : (darkMode ? 'bg-emerald-900/40 text-emerald-400' : 'bg-emerald-50 text-emerald-600')}`}>
                         {row.op === '-' ? <Minus size={16} /> : <Plus size={16} />}
                       </button>
                     )}
-                    <input type="time" value={row.time} aria-label={`Horário ${i + 1}${i > 0 ? (row.op === '-' ? ' (subtrair)' : ' (somar)') : ''}`}
-                      onChange={e => updateCalcRow(i, 'time', e.target.value)}
-                      className={`flex-1 rounded-lg p-2.5 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+                    <div className="flex-1 relative min-w-0">
+                      <input type="number" min="0" inputMode="numeric" placeholder="0" value={row.hours}
+                        aria-label={`Horas da duração ${i + 1}${i > 0 ? (row.op === '-' ? ' (subtrair)' : ' (somar)') : ''}`}
+                        onChange={e => updateCalcRow(i, 'hours', e.target.value)}
+                        className={`w-full rounded-lg p-2.5 pr-7 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+                      <span aria-hidden="true" className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>h</span>
+                    </div>
+                    <div className="flex-1 relative min-w-0">
+                      <input type="number" min="0" max="59" inputMode="numeric" placeholder="0" value={row.minutes}
+                        aria-label={`Minutos da duração ${i + 1}${i > 0 ? (row.op === '-' ? ' (subtrair)' : ' (somar)') : ''}`}
+                        onChange={e => {
+                          const v = e.target.value;
+                          updateCalcRow(i, 'minutes', v === '' ? '' : Math.min(59, Math.max(0, parseInt(v, 10) || 0)).toString());
+                        }}
+                        className={`w-full rounded-lg p-2.5 pr-10 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-300'}`} />
+                      <span aria-hidden="true" className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-slate-400'}`}>min</span>
+                    </div>
                     {calcRows.length > 1 && (
-                      <button type="button" onClick={() => removeCalcRow(i)} aria-label={`Remover horário ${i + 1}`}
+                      <button type="button" onClick={() => removeCalcRow(i)} aria-label={`Remover duração ${i + 1}`}
                         className={`p-2 rounded-lg ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-slate-400 hover:bg-slate-100'}`}>
                         <X size={16} />
                       </button>
