@@ -86,6 +86,11 @@ const getExpectedHoursForDay = (dateStr) => {
   return 8;
 };
 
+// Data em que a jornada de 40h semanais passou a valer. O "Saldo Acumulado"
+// só soma horas extras/déficit a partir desta data — registros anteriores
+// (lançados sob a jornada antiga de 44h) não entram nessa conta.
+const SALDO_ACUMULADO_START_DATE = '2026-10-09';
+
 const TimesheetControl = () => {
   const [entries, setEntries] = useState([]);
   const [currentEntry, setCurrentEntry] = useState({
@@ -467,7 +472,7 @@ const TimesheetControl = () => {
   const summary = useMemo(() => {
     const totals = entries.reduce((acc, e) => ({
       worked: acc.worked + e.workedHours,
-      overtime: acc.overtime + e.overtime
+      overtime: acc.overtime + (e.date >= SALDO_ACUMULADO_START_DATE ? e.overtime : 0)
     }), { worked: 0, overtime: 0 });
 
     const autoCompensated = Math.max(0, totals.overtime);
@@ -553,8 +558,8 @@ const TimesheetControl = () => {
   };
 
   const handleResetAccumulatedBalance = () => {
-    if (window.confirm('Isso vai zerar o saldo acumulado (horas extras ou em débito) de todos os registros. Os registros de ponto não serão apagados, apenas o saldo. Essa ação não pode ser desfeita. Deseja continuar?')) {
-      setEntries(entries.map(e => ({ ...e, overtime: 0 })));
+    if (window.confirm('Isso vai zerar o saldo acumulado (horas extras ou em débito) de todos os registros a partir de 09/10/2026. Os registros de ponto não serão apagados, apenas o saldo. Essa ação não pode ser desfeita. Deseja continuar?')) {
+      setEntries(entries.map(e => e.date >= SALDO_ACUMULADO_START_DATE ? { ...e, overtime: 0 } : e));
     }
   };
 
