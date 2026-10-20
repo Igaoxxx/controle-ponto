@@ -91,6 +91,18 @@ const getExpectedHoursForDay = (dateStr) => {
 // (lançados sob a jornada antiga de 44h) não entram nessa conta.
 const SALDO_ACUMULADO_START_DATE = '2026-10-09';
 
+// Registros lançados antes da virada de código acima ficaram com
+// expectedHours/overtime calculados pela jornada antiga (9h seg-qui, 8h
+// sexta), mesmo sendo de dias já dentro da jornada nova de 8h fixas. Corrige
+// isso recalculando a hora esperada e o saldo de cada registro >= 09/10/2026
+// com a regra atual — registros anteriores a essa data ficam como estavam.
+const normalizeEntry = (e) => {
+  if (e.date < SALDO_ACUMULADO_START_DATE) return e;
+  const expectedHours = getExpectedHoursForDay(e.date);
+  if (e.expectedHours === expectedHours) return e;
+  return { ...e, expectedHours, overtime: (e.workedHours || 0) - expectedHours };
+};
+
 const TimesheetControl = () => {
   const [entries, setEntries] = useState([]);
   const [currentEntry, setCurrentEntry] = useState({
@@ -192,7 +204,7 @@ const TimesheetControl = () => {
         .maybeSingle();
       if (error) console.error('Erro ao carregar dados', error);
       if (data) {
-        if (data.entries) setEntries(data.entries);
+        if (data.entries) setEntries(data.entries.map(normalizeEntry));
         if (data.hours_goal) setHoursGoal(data.hours_goal);
         if (data.dark_mode !== null) setDarkMode(data.dark_mode);
       }
@@ -546,7 +558,7 @@ const TimesheetControl = () => {
       if (!merged.some(e => e.date === localEntry.date)) merged.push(localEntry);
     });
     merged.sort((a, b) => new Date(b.date) - new Date(a.date));
-    setEntries(merged);
+    setEntries(merged.map(normalizeEntry));
     if (localBackup.hoursGoal && !hoursGoal.total) setHoursGoal(localBackup.hoursGoal);
     localStorage.setItem('supabase_migration_done', '1');
     setLocalBackup(null);
